@@ -27,28 +27,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
 /* ============================================================
-   FONT: TaipeiSansTC (CDN) + Fallback
+   FONT: TaipeiSansTC via CDN + Fallback
    ============================================================ */
-@font-face {
-  font-family: 'TaipeiSansTC';
-  src: url('https://cdn.jsdelivr.net/gh/Aries0d0f/TaipeiSansTC@master/dist/TaipeiSansTC-Regular.woff2') format('woff2'),
-       url('https://cdn.jsdelivr.net/gh/Aries0d0f/TaipeiSansTC@master/dist/TaipeiSansTC-Regular.otf') format('opentype');
-  font-weight: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'TaipeiSansTC';
-  src: url('https://cdn.jsdelivr.net/gh/Aries0d0f/TaipeiSansTC@master/dist/TaipeiSansTC-Bold.woff2') format('woff2'),
-       url('https://cdn.jsdelivr.net/gh/Aries0d0f/TaipeiSansTC@master/dist/TaipeiSansTC-Bold.otf') format('opentype');
-  font-weight: bold;
-  font-display: swap;
-}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; scroll-behavior: smooth; }
 
 :root {
-  --font: 'TaipeiSansTC', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  --font: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', 'TaipeiSansTC', sans-serif;
   --primary: #2563EB;
   --primary-dark: #1D4ED8;
   --primary-light: #DBEAFE;
@@ -630,7 +616,7 @@ const firebaseConfig = {
 /* ============================================================
    🤖 GEMINI API KEY（已填入你提供的 Key）
    ============================================================ */
-const GEMINI_API_KEY = "AIzaSyCGbZpOu3ahZMytVKfOHMeSbOejlztxMEY";
+const GEMINI_API_KEY = "AIzaSyC9weKC_orWCC2nRV9fYmShUM3vNIpqz2g";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 /* ============================================================
