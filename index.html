@@ -1,0 +1,1767 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>AI 無限題庫</title>
+
+<!-- ===== Firebase SDK ===== -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js">
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js">
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js">
+</script>
+
+<!-- ===== Chart.js ===== -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js">
+</script>
+
+<!-- ===== Markdown Parser ===== -->
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js">
+</script>
+
+<!-- ===== TaipeiSansTC (CDN) or fallback ===== -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   FONT: TaipeiSansTC (CDN) + Fallback
+   ============================================================ */
+@font-face {
+  font-family: 'TaipeiSansTC';
+  src: url('https://cdn.jsdelivr.net/gh/Aries0d0f/TaipeiSansTC@master/dist/TaipeiSansTC-Regular.woff2') format('woff2'),
+       url('https://cdn.jsdelivr.net/gh/Aries0d0f/TaipeiSansTC@master/dist/TaipeiSansTC-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'TaipeiSansTC';
+  src: url('https://cdn.jsdelivr.net/gh/Aries0d0f/TaipeiSansTC@master/dist/TaipeiSansTC-Bold.woff2') format('woff2'),
+       url('https://cdn.jsdelivr.net/gh/Aries0d0f/TaipeiSansTC@master/dist/TaipeiSansTC-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-display: swap;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; scroll-behavior: smooth; }
+
+:root {
+  --font: 'TaipeiSansTC', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  --primary: #2563EB;
+  --primary-dark: #1D4ED8;
+  --primary-light: #DBEAFE;
+  --success: #16A34A;
+  --success-light: #DCFCE7;
+  --danger: #DC2626;
+  --danger-light: #FEE2E2;
+  --warning: #D97706;
+  --warning-light: #FEF3C7;
+  --gray-50: #F9FAFB;
+  --gray-100: #F3F4F6;
+  --gray-200: #E5E7EB;
+  --gray-300: #D1D5DB;
+  --gray-400: #9CA3AF;
+  --gray-500: #6B7280;
+  --gray-600: #4B5563;
+  --gray-700: #374151;
+  --gray-800: #1F2937;
+  --gray-900: #111827;
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,.1), 0 4px 6px rgba(0,0,0,.05);
+}
+
+body {
+  font-family: var(--font);
+  background: var(--gray-50);
+  color: var(--gray-900);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* ===== NAVBAR ===== */
+.navbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--gray-100);
+}
+.navbar-inner {
+  max-width: 1200px; margin: 0 auto;
+  display: flex; align-items: center;
+  padding: 0 16px; height: 60px; gap: 8px;
+}
+.navbar-brand {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 1.25rem; font-weight: 700; color: var(--gray-900);
+  text-decoration: none; margin-right: auto;
+  white-space: nowrap;
+}
+.navbar-brand svg { width: 28px; height: 28px; color: var(--primary); flex-shrink: 0; }
+.nav-links { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.nav-links::-webkit-scrollbar { display: none; }
+.nav-link {
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 12px; border-radius: 8px;
+  font-size: .875rem; font-weight: 500;
+  color: var(--gray-500); text-decoration: none;
+  transition: all .15s; white-space: nowrap;
+}
+.nav-link:hover, .nav-link.active { background: var(--gray-100); color: var(--gray-900); }
+.nav-link svg { width: 16px; height: 16px; flex-shrink: 0; }
+.nav-user { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.nav-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  object-fit: cover; background: var(--gray-200); cursor: pointer;
+}
+.nav-avatar-placeholder {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--gray-200); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: .75rem; color: var(--gray-500);
+}
+
+/* ===== MAIN CONTAINER ===== */
+.container { max-width: 1000px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* ===== PAGE SECTIONS ===== */
+.page { display: none; animation: fadeIn .25s ease; }
+.page.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ===== TYPOGRAPHY ===== */
+h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 4px; }
+h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 12px; }
+h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+.text-sm { font-size: .875rem; }
+.text-xs { font-size: .75rem; }
+.text-muted { color: var(--gray-500); }
+.text-center { text-align: center; }
+.mb-2 { margin-bottom: 8px; }
+.mb-4 { margin-bottom: 16px; }
+.mb-6 { margin-bottom: 24px; }
+.mb-8 { margin-bottom: 32px; }
+.mt-2 { margin-top: 8px; }
+.mt-4 { margin-top: 16px; }
+.mt-6 { margin-top: 24px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.flex { display: flex; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.flex-1 { flex: 1; min-width: 0; }
+.grid { display: grid; }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+
+/* ===== CARDS ===== */
+.card {
+  background: #fff; border-radius: var(--radius);
+  border: 1px solid var(--gray-100);
+  box-shadow: var(--shadow);
+  padding: 20px; transition: box-shadow .2s;
+}
+.card-hover:hover { box-shadow: var(--shadow-md); }
+.card-flat { border: none; box-shadow: none; }
+.card-divider { border-top: 1px solid var(--gray-100); margin: 16px -20px; }
+
+/* ===== BUTTONS ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 20px; border-radius: 10px; font-size: .875rem; font-weight: 600;
+  border: none; cursor: pointer; transition: all .15s;
+  font-family: var(--font); text-decoration: none; line-height: 1.2;
+  white-space: nowrap;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+.btn-secondary { background: var(--gray-100); color: var(--gray-700); }
+.btn-secondary:hover:not(:disabled) { background: var(--gray-200); }
+.btn-outline {
+  background: transparent; color: var(--gray-600);
+  border: 2px solid var(--gray-200);
+}
+.btn-outline:hover:not(:disabled) { border-color: var(--gray-400); background: var(--gray-50); }
+.btn-success { background: var(--success); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-sm { padding: 6px 12px; font-size: .8125rem; border-radius: 8px; }
+.btn-lg { padding: 14px 28px; font-size: 1rem; }
+.btn-block { width: 100%; }
+.btn-ghost { background: transparent; color: var(--gray-500); }
+.btn-ghost:hover:not(:disabled) { background: var(--gray-100); color: var(--gray-700); }
+
+/* ===== INPUTS ===== */
+.input-group { margin-bottom: 16px; }
+.input-label { display: block; font-size: .875rem; font-weight: 500; color: var(--gray-700); margin-bottom: 4px; }
+.input, .textarea, .select {
+  width: 100%; padding: 10px 14px; border: 2px solid var(--gray-200);
+  border-radius: 10px; font-size: .875rem; font-family: var(--font);
+  transition: border-color .15s; outline: none; background: #fff;
+  color: var(--gray-900);
+}
+.input:focus, .textarea:focus, .select:focus { border-color: var(--primary); }
+.textarea { resize: vertical; min-height: 100px; }
+.input-error { border-color: var(--danger); }
+.input-help { font-size: .75rem; color: var(--gray-400); margin-top: 4px; }
+
+/* ===== BADGES / TAGS ===== */
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 100px;
+  font-size: .75rem; font-weight: 500;
+}
+.tag-blue { background: var(--primary-light); color: var(--primary); }
+.tag-green { background: var(--success-light); color: var(--success); }
+.tag-red { background: var(--danger-light); color: var(--danger); }
+.tag-yellow { background: var(--warning-light); color: var(--warning); }
+.tag-gray { background: var(--gray-100); color: var(--gray-600); }
+.tag-sm { padding: 1px 8px; font-size: .6875rem; }
+
+/* ===== LOADING ===== */
+.spinner {
+  width: 28px; height: 28px; border: 3px solid var(--gray-200);
+  border-top-color: var(--primary); border-radius: 50%;
+  animation: spin .6s linear infinite; margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-overlay {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 60px 20px; color: var(--gray-500);
+}
+
+/* ===== PROGRESS BAR ===== */
+.progress-bar {
+  width: 100%; height: 8px; background: var(--gray-100);
+  border-radius: 100px; overflow: hidden;
+}
+.progress-fill {
+  height: 100%; background: var(--primary); border-radius: 100px;
+  transition: width .3s ease;
+}
+
+/* ===== TOAST ===== */
+.toast-container {
+  position: fixed; top: 76px; left: 50%; transform: translateX(-50%);
+  z-index: 999; display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none; max-width: 90vw;
+}
+.toast {
+  background: var(--gray-900); color: #fff; padding: 12px 20px;
+  border-radius: 10px; font-size: .875rem; font-weight: 500;
+  box-shadow: var(--shadow-lg); pointer-events: auto;
+  animation: toastIn .25s ease; max-width: 420px;
+}
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast-info { background: var(--primary); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-12px); } }
+
+/* ===== HERO / LANDING ===== */
+.hero { text-align: center; padding: 60px 0 40px; }
+.hero h1 { font-size: 2.5rem; margin-bottom: 8px; }
+.hero h1 span { color: var(--primary); }
+.hero p { font-size: 1.1rem; color: var(--gray-500); max-width: 600px; margin: 0 auto 32px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 14px; background: var(--primary-light);
+  color: var(--primary); border-radius: 100px;
+  font-size: .8125rem; font-weight: 600; margin-bottom: 20px;
+}
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 16px; margin-top: 40px; }
+.feature-card {
+  background: #fff; border-radius: var(--radius); border: 1px solid var(--gray-100);
+  padding: 20px; text-align: center; transition: box-shadow .2s;
+}
+.feature-card:hover { box-shadow: var(--shadow-md); }
+.feature-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: var(--primary-light); display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px;
+}
+.feature-icon svg { width: 22px; height: 22px; color: var(--primary); }
+.feature-card h3 { font-size: .9375rem; margin-bottom: 4px; }
+.feature-card p { font-size: .8125rem; color: var(--gray-500); }
+
+/* ===== QUIZ ===== */
+.quiz-source-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.source-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 10px; font-size: .8125rem; font-weight: 600;
+  border: none; cursor: pointer; transition: all .15s;
+  font-family: var(--font); background: var(--gray-100); color: var(--gray-600);
+}
+.source-tab:hover { background: var(--gray-200); }
+.source-tab.active { background: var(--primary-light); color: var(--primary); box-shadow: 0 0 0 2px var(--primary); }
+.source-tab svg { width: 16px; height: 16px; }
+
+/* Question */
+.question-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.question-meta { font-size: .8125rem; color: var(--gray-500); }
+.question-content { font-size: 1.05rem; line-height: 1.7; margin-bottom: 20px; }
+.question-type-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 100px;
+  font-size: .6875rem; font-weight: 600; margin-left: 8px;
+  background: var(--gray-100); color: var(--gray-600);
+}
+.options-list { display: flex; flex-direction: column; gap: 10px; }
+.option-btn {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; text-align: left; padding: 14px 16px;
+  border: 2px solid var(--gray-200); border-radius: 10px;
+  background: #fff; cursor: pointer; font-size: .875rem;
+  font-family: var(--font); transition: all .15s;
+}
+.option-btn:hover:not(:disabled) { border-color: var(--primary); background: var(--gray-50); }
+.option-btn.selected:not(.result-mode) { border-color: var(--primary); background: var(--primary-light); }
+.option-btn.correct { border-color: var(--success); background: var(--success-light); }
+.option-btn.wrong { border-color: var(--danger); background: var(--danger-light); }
+.option-btn:disabled { cursor: default; }
+.option-icon { width: 20px; height: 20px; flex-shrink: 0; }
+.option-text { flex: 1; min-width: 0; }
+.true-false-group { display: flex; gap: 12px; }
+.true-false-group .option-btn { flex: 1; justify-content: center; }
+.fill-input { width: 100%; padding: 12px 16px; border: 2px solid var(--gray-200); border-radius: 10px; font-size: .875rem; font-family: var(--font); outline: none; }
+.fill-input:focus { border-color: var(--primary); }
+.fill-input.correct { border-color: var(--success); background: var(--success-light); }
+.fill-input.wrong { border-color: var(--danger); background: var(--danger-light); }
+
+.explanation-box { padding: 16px; border-radius: 10px; margin-top: 16px; font-size: .875rem; }
+.explanation-box.correct { background: var(--success-light); border: 1px solid #BBF7D0; }
+.explanation-box.wrong { background: var(--danger-light); border: 1px solid #FECACA; }
+.explanation-box h4 { font-size: .8125rem; margin-bottom: 4px; }
+.explanation-box p { color: var(--gray-600); }
+
+/* ===== QUIZ NAV ===== */
+.quiz-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; gap: 12px; }
+.question-dots { display: flex; gap: 4px; flex-wrap: wrap; }
+.question-dot {
+  width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--gray-200);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .625rem; font-weight: 600; cursor: pointer;
+  transition: all .15s; background: #fff; color: var(--gray-400);
+}
+.question-dot.active { border-color: var(--primary); background: var(--primary); color: #fff; }
+.question-dot.answered { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+.question-dot:hover:not(.active) { border-color: var(--gray-400); }
+
+/* ===== RESULT ===== */
+.result-hero { text-align: center; padding: 32px; }
+.result-grade {
+  width: 80px; height: 80px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; margin: 0 auto 16px;
+  font-size: 2rem; font-weight: 700;
+}
+.result-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin: 20px 0; }
+
+/* ===== LEADERBOARD ===== */
+.leaderboard-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.lb-tab {
+  padding: 8px 18px; border-radius: 100px; font-size: .8125rem; font-weight: 600;
+  border: none; cursor: pointer; transition: all .15s;
+  font-family: var(--font); background: var(--gray-100); color: var(--gray-600);
+}
+.lb-tab.active { background: var(--primary); color: #fff; }
+.lb-entry { display: flex; align-items: center; gap: 12px; }
+.lb-rank { width: 28px; text-align: center; font-weight: 700; font-size: .875rem; }
+.lb-rank.gold { color: #EAB308; }
+.lb-rank.silver { color: #9CA3AF; }
+.lb-rank.bronze { color: #F97316; }
+
+/* ===== ADMIN ===== */
+.admin-section { margin-bottom: 32px; }
+.toggle-switch {
+  position: relative; width: 44px; height: 24px; flex-shrink: 0;
+  background: var(--gray-300); border-radius: 100px; cursor: pointer;
+  transition: background .2s; border: none;
+}
+.toggle-switch.on { background: var(--primary); }
+.toggle-switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 20px; height: 20px; background: #fff; border-radius: 50%;
+  transition: transform .2s;
+}
+.toggle-switch.on::after { transform: translateX(20px); }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+.api-key-input { width: 100%; padding: 10px 14px; border: 2px solid var(--gray-200); border-radius: 10px; font-size: .8125rem; font-family: monospace; margin-bottom: 8px; }
+
+/* ===== DASHBOARD ===== */
+.chart-container { position: relative; height: 240px; width: 100%; }
+.stat-card { text-align: center; padding: 16px; }
+.stat-value { font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
+.stat-label { font-size: .75rem; color: var(--gray-500); margin-top: 2px; }
+
+/* ===== PROFILE ===== */
+.profile-avatar-lg { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; margin: 0 auto 12px; display: block; }
+
+/* ===== TABLE ===== */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--gray-100); }
+th { color: var(--gray-500); font-weight: 500; font-size: .75rem; text-transform: uppercase; letter-spacing: .5px; }
+
+/* ===== MARKDOWN CONTENT ===== */
+.markdown-content { font-size: .875rem; line-height: 1.7; }
+.markdown-content h1, .markdown-content h2, .markdown-content h3 { margin-top: 16px; margin-bottom: 8px; }
+.markdown-content p { margin-bottom: 8px; color: var(--gray-600); }
+.markdown-content ul, .markdown-content ol { padding-left: 20px; margin-bottom: 8px; }
+.markdown-content li { margin-bottom: 4px; color: var(--gray-600); }
+.markdown-content code { background: var(--gray-100); padding: 2px 6px; border-radius: 4px; font-size: .8125rem; }
+.markdown-content blockquote {
+  border-left: 3px solid var(--primary); padding-left: 12px;
+  color: var(--gray-500); margin: 8px 0; font-style: italic;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .nav-links { gap: 0; }
+  .nav-link { padding: 6px 8px; font-size: .8125rem; }
+  .navbar-brand span { display: none; }
+  .hero h1 { font-size: 1.75rem; }
+  .result-stats { gap: 8px; }
+  .stat-value { font-size: 1.25rem; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .true-false-group { flex-direction: column; }
+}
+@media (max-width: 480px) {
+  .container { padding: 16px 12px 80px; }
+  .card { padding: 16px; }
+  .nav-link span.nav-text { display: none; }
+  .question-dots { display: none; }
+}
+
+/* ===== MISC ===== */
+.hidden { display: none !important; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-full { width: 100%; }
+.cursor-pointer { cursor: pointer; }
+.gap-1 { gap: 4px; }
+.gap-2 { gap: 8px; }
+.flex-col { flex-direction: column; }
+.items-start { align-items: flex-start; }
+.flex-shrink-0 { flex-shrink: 0; }
+.overflow-hidden { overflow: hidden; }
+.p-4 { padding: 16px; }
+.py-2 { padding-top: 8px; padding-bottom: 8px; }
+.border-bottom { border-bottom: 1px solid var(--gray-100); }
+</style>
+</head>
+<body>
+
+<!-- ===== TOAST CONTAINER ===== -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ===== LOADING OVERLAY ===== -->
+<div id="globalLoading" class="loading-overlay" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,.8);z-index:200">
+  <div class="spinner"></div>
+  <div style="font-size:.875rem;color:var(--gray-500)">處理中...</div>
+</div>
+
+<!-- ==========================================================
+     NAVBAR
+     ========================================================== -->
+<nav class="navbar" id="navbar">
+  <div class="navbar-inner">
+    <a href="#home" class="navbar-brand" onclick="navigate('home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 6v6l4 2"/></svg>
+      <span>AI題庫</span>
+    </a>
+    <div class="nav-links" id="navLinks"></div>
+    <div class="nav-user" id="navUser"></div>
+  </div>
+</nav>
+
+<!-- ==========================================================
+     MAIN CONTENT
+     ========================================================== -->
+<div class="container">
+
+  <!-- ===== HOME PAGE ===== -->
+  <div class="page active" id="page-home">
+    <div class="hero">
+      <div class="hero-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 7h7l-5 4 2 7-6-4-6 4 2-7-5-4h7z"/></svg>
+        Google Gemini AI 驅動
+      </div>
+      <h1>AI <span>無限</span>題庫</h1>
+      <p>輸入知識點或上傳教材，Gemini AI 自動生成無限量測驗題目。支援多種題型、智慧筆記與個人化儀表板。</p>
+      <div id="homeCta"></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <h3>AI 無限出題</h3>
+        <p>Gemini 動態變形，無限題目不重複</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <h3>多模態輸入</h3>
+        <p>文字、圖片、PDF 多種出題方式</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </div>
+        <h3>智慧筆記</h3>
+        <p>AI 自動整理錯題與學習摘要</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+        <h3>學習儀表板</h3>
+        <p>Chart.js 視覺化進步曲線與雷達圖</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 6 9 6 9z"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 18 9 18 9z"/><path d="M4 22h16"/><path d="M10 22V8h4v14"/></svg>
+        </div>
+        <h3>遊戲化排行</h3>
+        <p>勤奮榜、實力榜、進步神速榜</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h3>安全可靠</h3>
+        <p>Firebase 認證與資料加密</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== QUIZ PAGE ===== -->
+  <div class="page" id="page-quiz">
+    <h1 style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      AI 練習
+    </h1>
+    <div id="quizContent"></div>
+  </div>
+
+  <!-- ===== DASHBOARD PAGE ===== -->
+  <div class="page" id="page-dashboard">
+    <h1 style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      學習儀表板
+    </h1>
+    <div id="dashboardContent">
+      <div class="loading-overlay"><div class="spinner"></div><div>載入中...</div></div>
+    </div>
+  </div>
+
+  <!-- ===== NOTES PAGE ===== -->
+  <div class="page" id="page-notes">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <h1 style="margin:0">學習筆記</h1>
+      </div>
+      <button class="btn btn-primary" onclick="generateNote()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 7h7l-5 4 2 7-6-4-6 4 2-7-5-4h7z"/></svg>
+        生成筆記
+      </button>
+    </div>
+    <div id="notesContent">
+      <div class="loading-overlay"><div class="spinner"></div><div>載入中...</div></div>
+    </div>
+  </div>
+
+  <!-- ===== LEADERBOARD PAGE ===== -->
+  <div class="page" id="page-leaderboard">
+    <h1 style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EAB308" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 6 9 6 9z"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 18 9 18 9z"/><path d="M4 22h16"/><path d="M10 22V8h4v14"/></svg>
+      排行榜
+    </h1>
+    <div id="leaderboardContent">
+      <div class="loading-overlay"><div class="spinner"></div><div>載入中...</div></div>
+    </div>
+  </div>
+
+  <!-- ===== ADMIN PAGE ===== -->
+  <div class="page" id="page-admin">
+    <h1 style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      管理後台
+    </h1>
+    <div id="adminContent">
+      <div class="loading-overlay"><div class="spinner"></div><div>載入中...</div></div>
+    </div>
+  </div>
+
+  <!-- ===== PROFILE PAGE ===== -->
+  <div class="page" id="page-profile">
+    <h1 style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      個人設定
+    </h1>
+    <div id="profileContent"></div>
+  </div>
+
+</div>
+
+<!-- ==========================================================
+     JAVASCRIPT
+     ========================================================== -->
+<script>
+/* ============================================================
+   🔥 FIREBASE CONFIG — 請修改成你的 Firebase 專案設定
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBpnq4dchk15fiM2AkN4qT4boUUsxtjtug",
+  authDomain: "hwhs-kl.firebaseapp.com",
+  projectId: "hwhs-kl",
+  storageBucket: "hwhs-kl.firebasestorage.app",
+  messagingSenderId: "539452268695",
+  appId: "1:539452268695:web:9d070fc61e717346a809d2",
+  measurementId: "G-BX6XLQ8TS6"
+};
+
+/* ============================================================
+   🤖 GEMINI API KEY（已填入你提供的 Key）
+   ============================================================ */
+const GEMINI_API_KEY = "AIzaSyCGbZpOu3ahZMytVKfOHMeSbOejlztxMEY";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+/* ============================================================
+   APP STATE
+   ============================================================ */
+const state = {
+  user: null,
+  profile: null,
+  quizSession: null,
+  quizAnswers: {},
+  currentQIdx: 0,
+  quizMode: 'idle', // idle | taking | reviewing
+  dashboardChart: null,
+  radarChart: null,
+  adminData: null
+};
+
+/* ============================================================
+   FIREBASE INIT
+   ============================================================ */
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+/* ============================================================
+   UTILITY
+   ============================================================ */
+function $(id) { return document.getElementById(id); }
+function qs(sel, ctx) { return (ctx || document).querySelector(sel); }
+function qsa(sel, ctx) { return (ctx || document).querySelectorAll(sel); }
+
+function uid() { return Math.random().toString(36).substr(2, 9) + Date.now().toString(36); }
+
+function toast(msg, type) {
+  const c = $('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + (type || 'info');
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+function loading(show) { $('globalLoading').style.display = show ? 'flex' : 'none'; }
+
+function formatDate(d) {
+  if (!d) return '';
+  const date = d.toDate ? d.toDate() : new Date(d);
+  return date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function shuffle(arr) { const a = [...arr]; for (let i = a.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
+
+function accuracy(correct, total) { return total === 0 ? 0 : Math.round(correct/total*100); }
+
+/* ============================================================
+   ROUTER
+   ============================================================ */
+function navigate(page) {
+  window.location.hash = page;
+}
+
+function handleRoute() {
+  let hash = window.location.hash.replace('#', '') || 'home';
+  if (!state.user && !['home','auth'].includes(hash)) { hash = 'home'; window.location.hash = 'home'; }
+  qsa('.page').forEach(p => p.classList.remove('active'));
+  const page = $('page-' + hash);
+  if (page) page.classList.add('active');
+  qsa('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.page === hash));
+
+  switch (hash) {
+    case 'home': renderHome(); break;
+    case 'quiz': renderQuiz(); break;
+    case 'dashboard': renderDashboard(); break;
+    case 'notes': renderNotes(); break;
+    case 'leaderboard': renderLeaderboard(); break;
+    case 'admin': renderAdmin(); break;
+    case 'profile': renderProfile(); break;
+  }
+}
+
+window.addEventListener('hashchange', handleRoute);
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+auth.onAuthStateChanged(async (user) => {
+  state.user = user;
+  if (user) {
+    await loadProfile(user.uid);
+  } else {
+    state.profile = null;
+  }
+  updateNav();
+  handleRoute();
+});
+
+async function loadProfile(uid) {
+  try {
+    const doc = await db.collection('profiles').doc(uid).get();
+    if (doc.exists) {
+      state.profile = { id: uid, ...doc.data() };
+    } else {
+      // Create profile on first login
+      const p = {
+        email: state.user.email,
+        nickname: state.user.displayName || state.user.email?.split('@')[0] || '用戶',
+        fullName: state.user.displayName || '',
+        avatarUrl: state.user.photoURL || '',
+        role: 'user',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      await db.collection('profiles').doc(uid).set(p);
+      state.profile = { id: uid, ...p, createdAt: new Date() };
+    }
+  } catch(e) { console.error('loadProfile error:', e); }
+}
+
+async function updateProfile(data) {
+  if (!state.user) return;
+  try {
+    await db.collection('profiles').doc(state.user.uid).update(data);
+    Object.assign(state.profile, data);
+  } catch(e) { console.error('updateProfile error:', e); throw e; }
+}
+
+function signInWithGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(e => {
+    if (e.code !== 'auth/popup-closed-by-user') toast('登入失敗：' + e.message, 'error');
+  });
+}
+
+function signOut() {
+  auth.signOut();
+  state.quizSession = null;
+  state.quizAnswers = {};
+  state.currentQIdx = 0;
+  state.quizMode = 'idle';
+  navigate('home');
+}
+
+/* ============================================================
+   NAVBAR UPDATE
+   ============================================================ */
+function updateNav() {
+  const links = [
+    { page: 'home', label: '首頁', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>' }
+  ];
+  if (state.user) {
+    links.push(
+      { page: 'quiz', label: '練習', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' },
+      { page: 'dashboard', label: '儀表板', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>' },
+      { page: 'notes', label: '筆記', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' },
+      { page: 'leaderboard', label: '排行', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 6 9 6 9z"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 18 9 18 9z"/><path d="M4 22h16"/><path d="M10 22V8h4v14"/></svg>' }
+    );
+    if (state.profile?.role === 'admin') {
+      links.push({ page: 'admin', label: '管理', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' });
+    }
+  }
+
+  const container = $('navLinks');
+  container.innerHTML = links.map(l =>
+    `<a href="#${l.page}" class="nav-link${window.location.hash === '#'+l.page || (!window.location.hash && l.page==='home') ? ' active' : ''}" data-page="${l.page}" onclick="navigate('${l.page}')">${l.icon}<span class="nav-text">${l.label}</span></a>`
+  ).join('');
+
+  const userEl = $('navUser');
+  if (state.user) {
+    userEl.innerHTML = `
+      <a href="#profile" onclick="navigate('profile')" style="display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--gray-600)">
+        ${state.profile?.avatarUrl
+          ? `<img src="${state.profile.avatarUrl}" class="nav-avatar" alt="">`
+          : `<div class="nav-avatar-placeholder">${(state.profile?.nickname || '?')[0]}</div>`}
+        <span class="text-sm" style="display:none;font-weight:500">${state.profile?.nickname || ''}</span>
+      </a>
+      <button class="btn btn-ghost btn-sm" onclick="signOut()" title="登出">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>`;
+  } else {
+    userEl.innerHTML = `<button class="btn btn-primary btn-sm" onclick="signInWithGoogle()">登入</button>`;
+  }
+}
+
+/* ============================================================
+   HOME PAGE
+   ============================================================ */
+function renderHome() {
+  const cta = $('homeCta');
+  if (state.user) {
+    cta.innerHTML = `<button class="btn btn-primary btn-lg" onclick="navigate('quiz')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      開始練習
+    </button>`;
+  } else {
+    cta.innerHTML = `<button class="btn btn-primary btn-lg" onclick="signInWithGoogle()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Google 一鍵登入
+    </button>`;
+  }
+}
+
+/* ============================================================
+   QUIZ — GEMINI API
+   ============================================================ */
+const QUIZ_SYSTEM_PROMPT = `你是一個專業的AI出題系統。根據使用者提供的知識點或教材內容生成測驗題目。
+
+嚴格規則：
+1. 一律以 JSON 格式輸出，格式: { "questions": [ { "type": "multiple-choice|fill-in-blank|true-false|short-answer", "content": "題目", "options": ["A","B","C","D"], "correctAnswer": "正確答案", "explanation": "解析", "knowledgeTags": ["#tag1","#tag2"], "difficulty": "easy|medium|hard" } ] }
+2. 選擇題約40%、填充25%、是非20%、簡答15%
+3. 數學公式以 $...$ 標記 LaTeX
+4. 每個題目至少一個知識點標籤
+5. 難易度合理分布
+6. 對相同知識點改變數值/人物/情境（變形題）
+7. 直接輸出 JSON，不要 Markdown 程式碼區塊`;
+
+async function callGemini(prompt) {
+  const res = await fetch(GEMINI_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.9, maxOutputTokens: 8192 }
+    })
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error('API錯誤: ' + err); }
+  const data = await res.json();
+  let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  return JSON.parse(text);
+}
+
+async function generateQuizFromGemini(topic, sourceContent) {
+  const prompt = `${QUIZ_SYSTEM_PROMPT}\n\n主題：${topic || '一般知識'}\n題數：12\n${sourceContent ? `\n教材內容：\n${sourceContent}\n` : ''}\n生成 JSON：`;
+  return await callGemini(prompt);
+}
+
+/* ============================================================
+   QUIZ — UI
+   ============================================================ */
+function renderQuiz() {
+  const el = $('quizContent');
+  if (state.quizMode === 'taking') { renderQuizTaking(); return; }
+  if (state.quizMode === 'reviewing') { renderQuizReview(); return; }
+  el.innerHTML = `
+    <div class="card">
+      <div style="margin-bottom:16px">
+        <label class="input-label">選擇輸入方式</label>
+        <div class="quiz-source-tabs" id="sourceTabs">
+          <button class="source-tab active" data-mode="text" onclick="setSourceMode('text')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+            文字輸入
+          </button>
+          <button class="source-tab" data-mode="youtube" onclick="setSourceMode('youtube')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            YouTube
+          </button>
+          <label class="source-tab" style="cursor:pointer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            上傳圖片/PDF
+            <input type="file" accept="image/*,application/pdf" style="display:none" id="fileInput" onchange="handleFileUpload(event)">
+          </label>
+        </div>
+      </div>
+      <div class="input-group">
+        <label class="input-label">知識點或主題</label>
+        <input class="input" id="quizTopic" placeholder="例如：國中數學 一元二次方程式、英文被動語態..." value="${state._lastTopic || ''}">
+      </div>
+      <div id="sourceExtra"></div>
+      <button class="btn btn-primary btn-block btn-lg" onclick="startQuiz()" id="startQuizBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        AI 生成題目
+      </button>
+      <div id="quizLoading" class="loading-overlay" style="display:none">
+        <div class="spinner"></div>
+        <div>Gemini AI 正在出題...</div>
+        <div class="text-xs text-muted">分析知識點、生成變形題目中</div>
+      </div>
+    </div>`;
+  state._sourceMode = 'text';
+}
+
+let _sourceMode = 'text';
+function setSourceMode(mode) {
+  _sourceMode = mode;
+  qsa('.source-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  const extra = $('sourceExtra');
+  if (mode === 'youtube') {
+    extra.innerHTML = `<div class="input-group"><label class="input-label">YouTube 網址</label><input class="input" id="youtubeUrl" placeholder="https://youtube.com/watch?v=..."></div>`;
+  } else if (mode === 'text') {
+    extra.innerHTML = `<div class="input-group"><label class="input-label">教材內容（選填）</label><textarea class="textarea" id="sourceContent" placeholder="貼上課本文章或筆記內容..." rows="5"></textarea></div>`;
+  } else {
+    extra.innerHTML = '';
+  }
+}
+
+function handleFileUpload(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { toast('檔案過大，請小於 10MB', 'error'); return; }
+  toast('檔案上傳成功，將以文字模式出題', 'info');
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const text = ev.target.result;
+    $('sourceContent').value = text;
+    setSourceMode('text');
+    toast('已將檔案內容填入教材區', 'success');
+  };
+  reader.readAsText(file);
+}
+
+async function startQuiz() {
+  const topic = $('quizTopic')?.value.trim();
+  const sourceContent = $('sourceContent')?.value.trim();
+  const youtubeUrl = $('youtubeUrl')?.value.trim();
+  if (!topic && !sourceContent && !youtubeUrl) { toast('請輸入知識點或教材內容', 'error'); return; }
+
+  const finalTopic = topic || '自訂學習';
+  const content = _sourceMode === 'youtube' ? `YouTube影片：${youtubeUrl}` : sourceContent;
+
+  loading(true);
+  try {
+    const result = await generateQuizFromGemini(finalTopic, content);
+    if (!result.questions || result.questions.length === 0) throw new Error('沒有生成題目');
+
+    const questions = shuffle(result.questions).map(q => ({ ...q, id: uid() }));
+    state.quizSession = {
+      id: uid(),
+      topic: finalTopic,
+      questions,
+      startedAt: new Date().toISOString()
+    };
+    state.quizAnswers = {};
+    state.currentQIdx = 0;
+    state.quizMode = 'taking';
+    state._lastTopic = finalTopic;
+    renderQuizTaking();
+    toast(`已生成 ${questions.length} 題`, 'success');
+  } catch(e) {
+    console.error(e);
+    toast('題目生成失敗：' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+function renderQuizTaking() {
+  const session = state.quizSession;
+  if (!session || !session.questions?.length) { state.quizMode = 'idle'; renderQuiz(); return; }
+
+  const q = session.questions[state.currentQIdx];
+  const total = session.questions.length;
+  const answered = Object.keys(state.quizAnswers).length;
+  const progress = total > 0 ? (answered / total * 100) : 0;
+
+  const tags = q.knowledgeTags?.map(t => `<span class="tag tag-blue tag-sm">${t}</span>`).join('') || '';
+  const typeName = { 'multiple-choice': '單選', 'fill-in-blank': '填充', 'true-false': '是非', 'short-answer': '簡答' }[q.type] || q.type;
+  const diffLabel = { 'easy': '簡單', 'medium': '中等', 'hard': '困難' }[q.difficulty] || q.difficulty;
+  const diffClass = { 'easy': 'tag-green', 'medium': 'tag-yellow', 'hard': 'tag-red' }[q.difficulty] || 'tag-gray';
+
+  const dots = session.questions.map((x, i) =>
+    `<div class="question-dot ${i === state.currentQIdx ? 'active' : ''} ${state.quizAnswers[x.id] ? 'answered' : ''}" onclick="goToQuestion(${i})">${i+1}</div>`
+  ).join('');
+
+  const prevBtn = state.currentQIdx > 0
+    ? `<button class="btn btn-outline" onclick="prevQuestion()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> 上一題</button>`
+    : `<div></div>`;
+
+  const nextBtn = state.currentQIdx < total - 1
+    ? `<button class="btn btn-primary" onclick="nextQuestion()">下一題 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>`
+    : `<button class="btn btn-success btn-lg" onclick="finishQuiz()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 完成作答</button>`;
+
+  let optionsHtml = '';
+  const selected = state.quizAnswers[q.id] || '';
+
+  if (q.type === 'multiple-choice' && q.options) {
+    optionsHtml = `<div class="options-list">${q.options.map(o =>
+      `<button class="option-btn ${selected === o ? 'selected' : ''}" onclick="answerQuestion('${q.id}','${o.replace(/'/g, "\\'")}')">
+        <span class="option-text">${o}</span>
+        ${selected === o ? '<svg class="option-icon" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+      </button>`
+    ).join('')}</div>`;
+  } else if (q.type === 'true-false') {
+    optionsHtml = `<div class="true-false-group">
+      ${['正確','錯誤'].map(o =>
+        `<button class="option-btn ${selected === o ? 'selected' : ''}" onclick="answerQuestion('${q.id}','${o}')">${o}
+          ${selected === o ? '<svg class="option-icon" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+        </button>`
+      ).join('')}
+    </div>`;
+  } else if (q.type === 'fill-in-blank') {
+    optionsHtml = `<input class="fill-input" value="${selected}" oninput="answerQuestion('${q.id}', this.value)" placeholder="請輸入答案..." autocomplete="off">`;
+  } else if (q.type === 'short-answer') {
+    optionsHtml = `<textarea class="textarea" style="min-height:100px" oninput="answerQuestion('${q.id}', this.value)" placeholder="請輸入你的答案...">${selected}</textarea>`;
+  }
+
+  const el = $('quizContent');
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${progress}%"></div></div>
+        <span class="text-sm text-muted">${answered}/${total}</span>
+      </div>
+    </div>
+    <div class="card" style="animation:fadeIn .25s ease">
+      <div class="question-header">
+        <span class="question-meta">第 ${state.currentQIdx+1}/${total} 題</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="tag ${diffClass} tag-sm">${diffLabel}</span>
+          <span class="question-type-badge">${typeName}</span>
+        </div>
+      </div>
+      ${tags ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">${tags}</div>` : ''}
+      <div class="question-content">${q.content}</div>
+      ${optionsHtml}
+    </div>
+    <div class="quiz-nav">
+      ${prevBtn}
+      <div class="question-dots">${dots}</div>
+      ${nextBtn}
+    </div>`;
+}
+
+function answerQuestion(qid, answer) {
+  state.quizAnswers[qid] = answer;
+  renderQuizTaking();
+}
+
+function goToQuestion(idx) {
+  if (idx >= 0 && idx < state.quizSession.questions.length) {
+    state.currentQIdx = idx;
+    renderQuizTaking();
+  }
+}
+
+function nextQuestion() {
+  if (state.currentQIdx < state.quizSession.questions.length - 1) {
+    state.currentQIdx++;
+    renderQuizTaking();
+  }
+}
+
+function prevQuestion() {
+  if (state.currentQIdx > 0) {
+    state.currentQIdx--;
+    renderQuizTaking();
+  }
+}
+
+function finishQuiz() {
+  const session = state.quizSession;
+  const total = session.questions.length;
+  let correct = 0;
+  const answers = [];
+  session.questions.forEach(q => {
+    const userAns = state.quizAnswers[q.id] || '';
+    const isCorrect = userAns.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase();
+    if (isCorrect) correct++;
+    answers.push({
+      userId: state.user?.uid,
+      sessionId: session.id,
+      questionId: q.id,
+      questionType: q.type,
+      userAnswer: userAns,
+      correctAnswer: q.correctAnswer,
+      isCorrect,
+      knowledgeTags: q.knowledgeTags || [],
+      difficulty: q.difficulty,
+      answeredAt: new Date().toISOString()
+    });
+  });
+
+  state.quizMode = 'reviewing';
+  // Save to Firestore
+  saveQuizSession(session, correct, answers);
+  renderQuizReview();
+}
+
+async function saveQuizSession(session, score, answers) {
+  if (!state.user) return;
+  try {
+    await db.collection('quiz_sessions').doc(session.id).set({
+      userId: state.user.uid,
+      topic: session.topic,
+      totalQuestions: session.questions.length,
+      score,
+      questions: session.questions,
+      answers: state.quizAnswers,
+      startedAt: session.startedAt,
+      completedAt: new Date().toISOString()
+    });
+    // Batch save answers
+    const batch = db.batch();
+    answers.forEach(a => {
+      const ref = db.collection('quiz_answers').doc(uid());
+      batch.set(ref, a);
+    });
+    await batch.commit();
+  } catch(e) { console.error('save error:', e); }
+}
+
+function renderQuizReview() {
+  const session = state.quizSession;
+  const total = session.questions.length;
+  let correct = 0;
+  session.questions.forEach(q => {
+    if ((state.quizAnswers[q.id] || '').trim().toLowerCase() === q.correctAnswer.trim().toLowerCase()) correct++;
+  });
+  const acc = accuracy(correct, total);
+  const grade = acc >= 90 ? 'A+' : acc >= 80 ? 'A' : acc >= 70 ? 'B' : acc >= 60 ? 'C' : 'D';
+  const gradeColor = acc >= 80 ? 'var(--success)' : acc >= 60 ? 'var(--warning)' : 'var(--danger)';
+  const gradeBg = acc >= 80 ? 'var(--success-light)' : acc >= 60 ? 'var(--warning-light)' : 'var(--danger-light)';
+
+  const reviewHtml = session.questions.map((q, i) => {
+    const ua = state.quizAnswers[q.id] || '';
+    const ic = ua.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase();
+    return `<div class="card" style="margin-bottom:8px;padding:14px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex-shrink:0;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${ic ? 'var(--success-light)' : 'var(--danger-light)'}">
+          ${ic
+            ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'
+            : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.875rem;margin-bottom:4px">${i+1}. ${q.content}</div>
+          ${!ic ? `<div class="text-xs" style="margin-top:4px"><span style="color:var(--danger)">你的答案：${ua}</span>&nbsp;&nbsp;<span style="color:var(--success)">正確答案：${q.correctAnswer}</span></div>` : ''}
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">
+            ${(q.knowledgeTags||[]).map(t => `<span class="tag tag-blue tag-sm">${t}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  $('quizContent').innerHTML = `
+    <div class="card text-center" style="padding:32px 20px;margin-bottom:20px">
+      <div class="result-grade" style="background:${gradeBg};color:${gradeColor};margin:0 auto 16px">${grade}</div>
+      <h2 style="margin-bottom:4px">練習完成！</h2>
+      <p class="text-muted text-sm mb-4">${session.topic}</p>
+      <div class="result-stats">
+        <div class="stat-card"><div class="stat-value" style="color:var(--success)">${correct}</div><div class="stat-label">正確</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--danger)">${total-correct}</div><div class="stat-label">錯誤</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--primary)">${acc}%</div><div class="stat-label">正確率</div></div>
+      </div>
+      <div class="progress-bar" style="margin:16px 0"><div class="progress-fill" style="width:${acc}%;background:${acc>=60 ? 'var(--primary)' : 'var(--danger)'}"></div></div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px">
+        <button class="btn btn-outline" onclick="retryQuiz()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 重新練習</button>
+        <button class="btn btn-primary" onclick="navigate('dashboard')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> 查看儀表板</button>
+      </div>
+    </div>
+    <h3 style="margin-bottom:12px">答題詳情</h3>
+    ${reviewHtml}`;
+}
+
+function retryQuiz() {
+  state.quizMode = 'idle';
+  state.quizSession = null;
+  state.quizAnswers = {};
+  state.currentQIdx = 0;
+  renderQuiz();
+}
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+async function renderDashboard() {
+  const el = $('dashboardContent');
+  if (!state.user) { el.innerHTML = '<div class="text-center text-muted" style="padding:40px">請先登入</div>'; return; }
+
+  el.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+
+  try {
+    const sessionsSnap = await db.collection('quiz_sessions')
+      .where('userId', '==', state.user.uid)
+      .orderBy('completedAt', 'desc')
+      .limit(20)
+      .get();
+
+    const sessions = [];
+    sessionsSnap.forEach(d => sessions.push({ id: d.id, ...d.data() }));
+
+    const totalQuizzes = sessions.length;
+    const totalCorrect = sessions.reduce((s, x) => s + (x.score || 0), 0);
+    const totalQ = sessions.reduce((s, x) => s + (x.totalQuestions || 0), 0);
+    const avgAcc = accuracy(totalCorrect, totalQ);
+
+    // Progress data
+    const progressData = sessions.slice().reverse().map(s => ({
+      date: formatDate(s.completedAt),
+      accuracy: s.totalQuestions > 0 ? accuracy(s.score, s.totalQuestions) : 0
+    }));
+
+    // Knowledge tags from answers
+    const answersSnap = await db.collection('quiz_answers')
+      .where('userId', '==', state.user.uid)
+      .limit(200)
+      .get();
+    const tagMap = {};
+    answersSnap.forEach(d => {
+      const a = d.data();
+      (a.knowledgeTags || []).forEach(t => {
+        if (!tagMap[t]) tagMap[t] = { correct: 0, total: 0 };
+        tagMap[t].total++;
+        if (a.isCorrect) tagMap[t].correct++;
+      });
+    });
+    const radarData = Object.entries(tagMap).map(([tag, v]) => ({
+      tag: tag.replace('#',''),
+      mastery: v.total > 0 ? Math.round(v.correct/v.total*100) : 0
+    }));
+
+    const recentHtml = sessions.slice(0, 8).map(s =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--gray-100)">
+        <div><div class="text-sm" style="font-weight:500">${s.topic || '未命名'}</div><div class="text-xs text-muted">${formatDate(s.completedAt)}</div></div>
+        <div style="text-align:right"><div class="text-sm" style="font-weight:600">${s.score||0}/${s.totalQuestions||0}</div><div class="text-xs" style="color:${(s.score||0)/(s.totalQuestions||1)>=0.7?'var(--success)':'var(--warning)'}">${s.totalQuestions>0?accuracy(s.score,s.totalQuestions):0}%</div></div>
+      </div>`
+    ).join('');
+
+    el.innerHTML = `
+      <div class="grid grid-2" style="margin-bottom:20px">
+        <div class="card stat-card"><div class="stat-value">${totalQuizzes}</div><div class="stat-label">總練習次數</div></div>
+        <div class="card stat-card"><div class="stat-value" style="color:var(--primary)">${avgAcc}%</div><div class="stat-label">平均正確率</div></div>
+      </div>
+      ${sessions.length > 0 ? `
+      <div class="grid grid-2" style="margin-bottom:20px">
+        <div class="card"><h3 style="font-size:.875rem;margin-bottom:12px">📈 進步曲線</h3><div class="chart-container"><canvas id="progressChart"></canvas></div></div>
+        <div class="card"><h3 style="font-size:.875rem;margin-bottom:12px">🎯 知識雷達圖</h3><div class="chart-container"><canvas id="radarChart"></canvas></div></div>
+      </div>` : ''}
+      <div class="card">
+        <h3 style="font-size:.875rem;margin-bottom:12px">最近練習</h3>
+        ${sessions.length > 0 ? recentHtml : '<div class="text-center text-muted text-sm" style="padding:20px">尚無練習紀錄，<a href="#quiz" style="color:var(--primary)" onclick="navigate(\'quiz\')">開始第一次練習</a></div>'}
+      </div>`;
+
+    // Render charts after DOM update
+    if (sessions.length > 0) {
+      setTimeout(() => {
+        renderCharts(progressData, radarData);
+      }, 100);
+    }
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = `<div class="card text-center" style="padding:40px">
+      <div style="font-size:2rem;margin-bottom:12px">📊</div>
+      <p class="text-muted">載入儀表板失敗，請確認 Firebase 已正確設定</p>
+      <p class="text-xs text-muted mt-2">${e.message}</p>
+    </div>`;
+  }
+}
+
+function renderCharts(progressData, radarData) {
+  // Progress chart
+  const pCtx = document.getElementById('progressChart')?.getContext('2d');
+  if (pCtx && state.dashboardChart) { state.dashboardChart.destroy(); }
+  if (pCtx && progressData.length > 0) {
+    state.dashboardChart = new Chart(pCtx, {
+      type: 'line',
+      data: {
+        labels: progressData.map(d => d.date),
+        datasets: [{
+          label: '正確率',
+          data: progressData.map(d => d.accuracy),
+          borderColor: '#2563EB',
+          backgroundColor: 'rgba(37,99,235,.1)',
+          fill: true,
+          tension: .4,
+          pointRadius: 4,
+          pointBackgroundColor: '#2563EB'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { min: 0, max: 100, ticks: { callback: v => v+'%' }, grid: { color: 'rgba(0,0,0,.05)' } },
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 } } }
+        }
+      }
+    });
+  }
+
+  // Radar chart
+  const rCtx = document.getElementById('radarChart')?.getContext('2d');
+  if (rCtx && state.radarChart) { state.radarChart.destroy(); }
+  if (rCtx && radarData.length > 0) {
+    state.radarChart = new Chart(rCtx, {
+      type: 'radar',
+      data: {
+        labels: radarData.map(d => d.tag),
+        datasets: [{
+          label: '熟練度',
+          data: radarData.map(d => d.mastery),
+          backgroundColor: 'rgba(37,99,235,.2)',
+          borderColor: '#2563EB',
+          pointBackgroundColor: '#2563EB',
+          pointBorderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { r: { min: 0, max: 100, ticks: { display: false }, grid: { color: 'rgba(0,0,0,.08)' } } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+}
+
+/* ============================================================
+   NOTES
+   ============================================================ */
+async function renderNotes() {
+  const el = $('notesContent');
+  if (!state.user) { el.innerHTML = '<div class="text-center text-muted" style="padding:40px">請先登入</div>'; return; }
+
+  el.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+
+  try {
+    const snap = await db.collection('notes')
+      .where('userId', '==', state.user.uid)
+      .orderBy('createdAt', 'desc')
+      .limit(20)
+      .get();
+    const notes = [];
+    snap.forEach(d => notes.push({ id: d.id, ...d.data() }));
+
+    if (notes.length === 0) {
+      el.innerHTML = `<div class="card text-center" style="padding:40px">
+        <div style="font-size:3rem;margin-bottom:12px">📝</div>
+        <h3 style="margin-bottom:4px">尚無筆記</h3>
+        <p class="text-muted text-sm mb-4">完成練習後，點擊右上角「生成筆記」按鈕</p>
+        <button class="btn btn-primary" onclick="generateNote()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 7h7l-5 4 2 7-6-4-6 4 2-7-5-4h7z"/></svg>
+          生成筆記
+        </button>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = notes.map(n => `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer" onclick="toggleNote('${n.id}')">
+          <div>
+            <h3 style="font-size:.9375rem;margin:0">${n.title}</h3>
+            <p class="text-xs text-muted mt-2">${formatDate(n.createdAt)}</p>
+          </div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            ${(n.knowledgeTags||[]).slice(0,3).map(t => `<span class="tag tag-blue tag-sm">${t}</span>`).join('')}
+          </div>
+        </div>
+        <div id="noteBody_${n.id}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--gray-100)">
+          <div class="markdown-content">${marked.parse(n.content||'')}</div>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = `<div class="card text-center" style="padding:40px"><p class="text-muted">載入失敗</p></div>`;
+  }
+}
+
+function toggleNote(id) {
+  const body = $('noteBody_' + id);
+  if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+}
+
+async function generateNote() {
+  if (!state.user) { toast('請先登入', 'error'); return; }
+  loading(true);
+  try {
+    // Fetch recent wrong answers
+    const snap = await db.collection('quiz_answers')
+      .where('userId', '==', state.user.uid)
+      .orderBy('answeredAt', 'desc')
+      .limit(50)
+      .get();
+    const answers = [];
+    snap.forEach(d => answers.push(d.data()));
+
+    if (answers.length === 0) {
+      toast('尚無答題紀錄，請先完成練習', 'error');
+      loading(false);
+      return;
+    }
+
+    const wrong = answers.filter(a => !a.isCorrect);
+    const correct = answers.filter(a => a.isCorrect);
+    const acc = accuracy(correct.length, answers.length);
+
+    // Build tag stats
+    const tagStats = {};
+    answers.forEach(a => {
+      (a.knowledgeTags || []).forEach(t => {
+        if (!tagStats[t]) tagStats[t] = { correct: 0, total: 0 };
+        tagStats[t].total++;
+        if (a.isCorrect) tagStats[t].correct++;
+      });
+    });
+    const weakTags = Object.entries(tagStats).filter(([_,v]) => v.correct/v.total < 0.7).map(([t]) => t);
+
+    const prompt = `你是一個專業的AI學習筆記助手。根據以下答題紀錄生成結構化學習筆記（繁體中文）。
+
+輸出 JSON 格式：
+{ "title": "筆記標題", "content": "Markdown內容（包含知識點總結、錯誤分析、重點提醒）", "knowledgeTags": ["#tag1","#tag2"], "weakAreas": [{"tag":"#弱項","suggestion":"改善建議"}] }
+
+答題統計：
+總題數：${answers.length}，正確：${correct.length}，錯誤：${wrong.length}，正確率：${acc}%
+
+錯題：
+${wrong.slice(0,10).map(a => `- 題目ID:${a.questionId}，你的答案:${a.userAnswer}，正確答案:${a.correctAnswer}，知識點:${(a.knowledgeTags||[]).join(',')}`).join('\n')}
+
+弱項知識點：${weakTags.join(', ') || '無明顯弱項'}
+
+請輸出純JSON（不要Markdown標記）：`;
+
+    const noteResult = await callGemini(prompt);
+    const note = {
+      userId: state.user.uid,
+      title: noteResult.title || '學習筆記',
+      content: noteResult.content || '無內容',
+      knowledgeTags: noteResult.knowledgeTags || [],
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    const ref = await db.collection('notes').add(note);
+    toast('筆記生成完成！', 'success');
+    renderNotes();
+  } catch(e) {
+    console.error(e);
+    toast('生成筆記失敗：' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+/* ============================================================
+   LEADERBOARD
+   ============================================================ */
+let _lbTab = 'diligence';
+
+async function renderLeaderboard() {
+  const el = $('leaderboardContent');
+  el.innerHTML = `
+    <div class="leaderboard-tabs" id="lbTabs">
+      <button class="lb-tab ${_lbTab==='diligence'?'active':''}" onclick="switchLB('diligence')">🔥 勤奮榜</button>
+      <button class="lb-tab ${_lbTab==='strength'?'active':''}" onclick="switchLB('strength')">👑 實力榜</button>
+      <button class="lb-tab ${_lbTab==='improvement'?'active':''}" onclick="switchLB('improvement')">📈 進步神速</button>
+    </div>
+    <div id="lbContent"><div class="loading-overlay"><div class="spinner"></div></div></div>`;
+
+  loadLeaderboard(_lbTab);
+}
+
+function switchLB(tab) {
+  _lbTab = tab;
+  qsa('.lb-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(tab === 'diligence' ? '勤奮' : tab === 'strength' ? '實力' : '進步')));
+  const el = $('lbContent');
+  el.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+  loadLeaderboard(tab);
+}
+
+async function loadLeaderboard(type) {
+  try {
+    const snap = await db.collection('quiz_sessions')
+      .where('completedAt', '!=', null)
+      .orderBy('completedAt', 'desc')
+      .limit(200)
+      .get();
+
+    const userStats = {};
+    snap.forEach(d => {
+      const s = d.data();
+      if (!userStats[s.userId]) userStats[s.userId] = { quizzes: 0, correct: 0, total: 0, accuracy: 0 };
+      userStats[s.userId].quizzes++;
+      userStats[s.userId].correct += s.score || 0;
+      userStats[s.userId].total += s.totalQuestions || 0;
+    });
+
+    // Get user profiles
+    const entries = [];
+    for (const [uid, stats] of Object.entries(userStats)) {
+      try {
+        const pDoc = await db.collection('profiles').doc(uid).get();
+        const p = pDoc.data() || {};
+        stats.accuracy = stats.total > 0 ? Math.round(stats.correct/stats.total*100) : 0;
+        entries.push({ uid, nickname: p.nickname || '用戶', avatarUrl: p.avatarUrl || '', ...stats });
+      } catch(e) { /* skip */ }
+    }
+
+    let sorted;
+    if (type === 'diligence') {
+      sorted = entries.sort((a,b) => b.quizzes - a.quizzes);
+    } else if (type === 'strength') {
+      sorted = entries.filter(e => e.quizzes >= 3).sort((a,b) => b.accuracy - a.accuracy);
+    } else {
+      // improvement - using a simple heuristic for now
+      sorted = entries.filter(e => e.quizzes >= 2).sort((a,b) => b.accuracy - a.accuracy);
+    }
+
+    if (sorted.length === 0) {
+      $('lbContent').innerHTML = '<div class="card text-center text-muted" style="padding:40px">尚無排行資料</div>';
+      return;
+    }
+
+    const rankIcons = ['🥇','🥈','🥉'];
+    const rankClasses = ['gold','silver','bronze'];
+
+    $('lbContent').innerHTML = sorted.slice(0, 20).map((e, i) => `
+      <div class="card" style="margin-bottom:6px;padding:12px 16px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="lb-rank ${i<3 ? rankClasses[i] : ''}">${i < 3 ? rankIcons[i] : (i+1)}</div>
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--gray-100);overflow:hidden;flex-shrink:0">
+            ${e.avatarUrl ? `<img src="${e.avatarUrl}" style="width:100%;height:100%;object-fit:cover">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--gray-400)">${(e.nickname||'?')[0]}</div>`}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div class="text-sm" style="font-weight:600">${e.nickname}</div>
+            <div class="text-xs text-muted">
+              ${type === 'diligence' ? `${e.quizzes} 次練習` : type === 'strength' ? `${e.quizzes} 次 · ${e.accuracy}% 正確率` : `${e.accuracy}% 正確率`}
+            </div>
+          </div>
+          <div style="font-weight:700;color:var(--primary)">${type === 'diligence' ? e.quizzes*10 + e.correct*5 : e.accuracy}${type === 'diligence' ? ' pts' : '%'}</div>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    console.error(e);
+    $('lbContent').innerHTML = `<div class="card text-center" style="padding:40px"><p class="text-muted">載入排行榜失敗</p><p class="text-xs text-muted mt-2">${e.message}</p></div>`;
+  }
+}
+
+/* ============================================================
+   ADMIN
+   ============================================================ */
+async function renderAdmin() {
+  const el = $('adminContent');
+  if (!state.user || state.profile?.role !== 'admin') {
+    el.innerHTML = '<div class="card text-center" style="padding:40px"><div style="font-size:3rem;margin-bottom:12px">🔒</div><h3 style="margin-bottom:4px">無權限存取</h3><p class="text-muted text-sm">僅管理員可進入此頁面</p></div>';
+    return;
+  }
+
+  el.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+
+  try {
+    // Get admin config from Firestore
+    let config = { geminiKeys: [], features: { leaderboard: true, notes: true, review: true }, maintenanceMode: false };
+    try {
+      const doc = await db.collection('admin_config').doc('settings').get();
+      if (doc.exists) config = doc.data();
+    } catch(e) { /* use defaults */ }
+
+    // Get user count
+    let userCount = 0;
+    try {
+      const uSnap = await db.collection('profiles').get();
+      userCount = uSnap.size;
+    } catch(e) { /* ignore */ }
+
+    // Get session count
+    let sessionCount = 0;
+    try {
+      const sSnap = await db.collection('quiz_sessions').get();
+      sessionCount = sSnap.size;
+    } catch(e) { /* ignore */ }
+
+    state.adminData = config;
+
+    el.innerHTML = `
+      <div class="admin-section">
+        <h2>🔑 Gemini API Key 管理</h2>
+        <div class="card">
+          <div id="apiKeysList">
+            ${(config.geminiKeys||['']).map((k,i) => `
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <input class="api-key-input" value="${k}" placeholder="API Key ${i+1}" onchange="updateKey(${i},this.value)">
+                <button class="btn btn-ghost btn-sm" onclick="removeKey(${i})" style="color:var(--danger)">✕</button>
+              </div>
+            `).join('')}
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-secondary btn-sm" onclick="addKey()">+ 新增 Key</button>
+            <button class="btn btn-primary btn-sm" onclick="saveAdminConfig()">💾 儲存</button>
+          </div>
+          <p class="text-xs text-muted mt-2">系統自動輪詢多組 Key，每分鐘最多 15 次請求</p>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <h2>⚙️ 功能開關</h2>
+        <div class="card">
+          <div class="toggle-row"><span class="text-sm">排行榜</span><button class="toggle-switch ${config.features?.leaderboard ? 'on' : ''}" onclick="toggleFeature('leaderboard')"></button></div>
+          <div class="toggle-row"><span class="text-sm">筆記生成</span><button class="toggle-switch ${config.features?.notes ? 'on' : ''}" onclick="toggleFeature('notes')"></button></div>
+          <div class="toggle-row"><span class="text-sm">複習系統</span><button class="toggle-switch ${config.features?.review ? 'on' : ''}" onclick="toggleFeature('review')"></button></div>
+          <div style="border-top:1px solid var(--gray-100);margin-top:8px;padding-top:8px">
+            <div class="toggle-row"><span class="text-sm" style="color:var(--danger)">🚨 緊急維護模式</span><button class="toggle-switch ${config.maintenanceMode ? 'on' : ''}" style="${config.maintenanceMode ? 'background:var(--danger)' : ''}" onclick="toggleMaintenance()"></button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <h2>📊 系統概覽</h2>
+        <div class="grid grid-2">
+          <div class="card stat-card"><div class="stat-value">${userCount}</div><div class="stat-label">註冊用戶</div></div>
+          <div class="card stat-card"><div class="stat-value">${sessionCount}</div><div class="stat-label">練習次數</div></div>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <h2>👥 用戶管理</h2>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>用戶</th><th>角色</th><th>ID</th></tr></thead>
+              <tbody id="userTableBody"><tr><td colspan="3" class="text-muted text-sm">載入中...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+
+    // Load users
+    try {
+      const uSnap = await db.collection('profiles').orderBy('createdAt', 'desc').limit(20).get();
+      const rows = [];
+      uSnap.forEach(d => {
+        const p = d.data();
+        rows.push(`<tr>
+          <td><div style="display:flex;align-items:center;gap:8px">
+            ${p.avatarUrl ? `<img src="${p.avatarUrl}" style="width:24px;height:24px;border-radius:50%;object-fit:cover">` : ''}
+            <span class="text-sm">${p.nickname || '未知'}</span>
+          </div></td>
+          <td><span class="tag ${p.role === 'admin' ? 'tag-yellow' : 'tag-gray'} tag-sm">${p.role || 'user'}</span></td>
+          <td class="text-xs text-muted">${d.id.slice(0,8)}...</td>
+        </tr>`);
+      });
+      (document.getElementById('userTableBody') || {}).innerHTML = rows.length > 0 ? rows.join('') : '<tr><td colspan="3" class="text-muted text-sm">尚無用戶</td></tr>';
+    } catch(e) { /* ignore */ }
+
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = `<div class="card text-center" style="padding:40px"><p class="text-muted">載入失敗</p></div>`;
+  }
+}
+
+function addKey() {
+  const keys = [...(state.adminData?.geminiKeys || []), ''];
+  state.adminData.geminiKeys = keys;
+  const list = $('apiKeysList');
+  const idx = keys.length - 1;
+  list.insertAdjacentHTML('beforeend', `
+    <div style="display:flex;gap:8px;margin-bottom:8px" id="keyRow_${idx}">
+      <input class="api-key-input" value="" placeholder="API Key ${idx+1}" onchange="updateKey(${idx},this.value)">
+      <button class="btn btn-ghost btn-sm" onclick="removeKey(${idx})" style="color:var(--danger)">✕</button>
+    </div>
+  `);
+}
+
+function updateKey(idx, val) {
+  if (state.adminData?.geminiKeys) state.adminData.geminiKeys[idx] = val;
+}
+
+function removeKey(idx) {
+  if (state.adminData?.geminiKeys) state.adminData.geminiKeys.splice(idx, 1);
+  renderAdmin();
+}
+
+function toggleFeature(key) {
+  if (state.adminData?.features) state.adminData.features[key] = !state.adminData.features[key];
+  renderAdmin();
+}
+
+function toggleMaintenance() {
+  if (state.adminData) state.adminData.maintenanceMode = !state.adminData.maintenanceMode;
+  renderAdmin();
+}
+
+async function saveAdminConfig() {
+  loading(true);
+  try {
+    await db.collection('admin_config').doc('settings').set(state.adminData || {}, { merge: true });
+    toast('設定已儲存', 'success');
+  } catch(e) {
+    toast('儲存失敗：' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+/* ============================================================
+   PROFILE
+   ============================================================ */
+function renderProfile() {
+  const el = $('profileContent');
+  if (!state.user) { el.innerHTML = '<div class="text-center text-muted" style="padding:40px">請先登入</div>'; return; }
+
+  const p = state.profile || {};
+  el.innerHTML = `
+    <div class="card" style="max-width:440px;margin:0 auto">
+      <div class="text-center" style="margin-bottom:20px">
+        ${p.avatarUrl
+          ? `<img src="${p.avatarUrl}" class="profile-avatar-lg" style="width:72px;height:72px;border-radius:50%;object-fit:cover">`
+          : `<div style="width:72px;height:72px;border-radius:50%;background:var(--gray-200);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:1.5rem;color:var(--gray-400)">${(p.nickname||'?')[0]}</div>`}
+        <h2 style="margin-bottom:0">個人設定</h2>
+        <p class="text-sm text-muted">設定用於筆記浮水印與排行榜</p>
+      </div>
+      <div class="input-group">
+        <label class="input-label">暱稱（顯示名稱）</label>
+        <input class="input" id="pfNickname" value="${p.nickname || ''}" placeholder="例如：學霸小明">
+      </div>
+      <div class="input-group">
+        <label class="input-label">全名（用於證書）</label>
+        <input class="input" id="pfFullname" value="${p.fullName || ''}" placeholder="您的真實姓名">
+      </div>
+      <div class="input-group">
+        <label class="input-label">電子郵件</label>
+        <input class="input" value="${state.user.email || ''}" disabled style="background:var(--gray-50)">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="saveProfile()">💾 儲存設定</button>
+    </div>`;
+}
+
+async function saveProfile() {
+  const nickname = $('pfNickname')?.value.trim();
+  const fullName = $('pfFullname')?.value.trim();
+  if (!nickname) { toast('請輸入暱稱', 'error'); return; }
+  try {
+    await updateProfile({ nickname, fullName });
+    toast('資料已更新', 'success');
+    updateNav();
+  } catch(e) { toast('更新失敗', 'error'); }
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+// Kick off initial render
+handleRoute();
+</script>
+</body>
+</html>
