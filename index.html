@@ -322,12 +322,12 @@ h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
 .option-text { flex: 1; min-width: 0; }
 .true-false-group { display: flex; gap: 12px; }
 .true-false-group .option-btn { flex: 1; justify-content: center; }
-.fill-input { width: 100%; padding: 12px 16px; border: 2px solid var(--gray-200); border-radius: 10px; font-size: .875rem; font-family: var(--font); outline: none; }
-.fill-input:focus { border-color: var(--primary); }
-.fill-input.correct { border-color: var(--success); background: var(--success-light); }
-.fill-input.wrong { border-color: var(--danger); background: var(--danger-light); }
+.fill-input { width: 100%; padding: 12px 16px; border: none; border-radius: var(--radius-sm); font-size: .875rem; font-family: var(--font); outline: none; background: var(--gray-50); }
+.fill-input:focus { outline: 1px solid var(--primary); }
+.fill-input.correct { outline: 1px solid var(--success); background: var(--success-light); }
+.fill-input.wrong { outline: 1px solid var(--danger); background: var(--danger-light); }
 
-.explanation-box { padding: 16px; border-radius: 10px; margin-top: 16px; font-size: .875rem; }
+.explanation-box { padding: 16px; border-radius: var(--radius-sm); margin-top: 16px; font-size: .875rem; }
 .explanation-box.correct { background: var(--success-light); border: 1px solid #BBF7D0; }
 .explanation-box.wrong { background: var(--danger-light); border: 1px solid #FECACA; }
 .explanation-box h4 { font-size: .8125rem; margin-bottom: 4px; }
@@ -497,7 +497,7 @@ th { color: var(--gray-500); font-weight: 500; font-size: .75rem; text-transform
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- ===== LOADING OVERLAY ===== -->
-<div id="globalLoading" class="loading-overlay" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,.8);z-index:200">
+<div id="globalLoading" class="loading-overlay" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:200">
   <div class="spinner"></div>
   <div style="font-size:.875rem;color:var(--gray-500)">處理中...</div>
 </div>
