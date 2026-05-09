@@ -1250,10 +1250,12 @@ function startTimer() {
 /* ============================================================
    SHARE
    ============================================================ */
-function shareResult(correct, total, acc, topic) {
+function shareResult(correct, total, acc) {
+  const btn = event?.target?.closest('button');
+  const topic = btn?.dataset?.topic ? decodeURIComponent(btn.dataset.topic) : '練習';
   const text = `📚 AI 題庫練習結果\n\n主題：${topic}\n正確：${correct}/${total}\n正確率：${acc}%\n\n— 來自 AI 無限題庫`;
   if (navigator.share) {
-    navigator.share({ title: 'AI 題庫練習結果', text }).catch(() => {});
+    navigator.share({ title: 'AI 題庫練習結果', text }).catch(() => toast('分享已取消', 'info'));
   } else {
     navigator.clipboard.writeText(text).then(() => toast('結果已複製到剪貼簿', 'success')).catch(() => toast('複製失敗', 'error'));
   }
@@ -1839,7 +1841,7 @@ function renderQuizReview() {
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px">
         <button class="btn btn-outline" onclick="retryQuiz()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 重新練習</button>
         <button class="btn btn-primary" onclick="navigate('dashboard')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> 查看儀表板</button>
-        <button class="btn btn-secondary" onclick="shareResult(${correct},${total},${acc},'${session.topic}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> 分享成績</button>
+        <button class="btn btn-secondary" onclick="shareResult(${correct},${total},${acc})" data-topic="${encodeURIComponent(session.topic || '')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> 分享成績</button>
       </div>
     </div>
     <h3 style="margin-bottom:12px">答題詳情</h3>
