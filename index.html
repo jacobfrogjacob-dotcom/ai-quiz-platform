@@ -1258,26 +1258,90 @@ async function toggleBookmark(qid, content, answer, tagsStr) {
 }
 
 /* ============================================================
-   115年課綱資料（動態載入 data/manifest.json）
+   課綱資料（Firestore 後台管理）
    ============================================================ */
+const DEFAULT_CURRICULUM = {
+  label: '115年 (2026) 最新課綱', grade: '國一',
+  subjects: [
+    { id: 'chinese', label: '國語', icon: '📖', units: [
+      { id: 'L1', label: '第一課 〈聲音鐘〉（陳黎）', subUnits: ['1-1 作者與背景', '1-2 課文賞析', '1-3 注釋與語詞', '1-4 修辭技巧'] },
+      { id: 'L2', label: '第二課 〈孩子的鐘塔〉', subUnits: ['2-1 作者與背景', '2-2 課文賞析', '2-3 注釋與語詞', '2-4 主旨探討'] },
+      { id: 'L3', label: '第三課 〈紙船印象〉（洪醒夫）', subUnits: ['3-1 作者與背景', '3-2 課文賞析', '3-3 記敘文寫作', '3-4 情感表達'] },
+      { id: 'L4', label: '第四課 小詩選──〈跳水〉〈風箏〉', subUnits: ['4-1 新詩賞析', '4-2 意象與象徵', '4-3 修辭技巧'] },
+      { id: 'L5', label: '第五課 近體詩選──〈登鸛雀樓〉〈聞官軍收河南河北〉〈過華清宮其一〉', subUnits: ['5-1 作者與背景', '5-2 詩詞賞析', '5-3 格律與押韻', '5-4 主旨比較'] },
+      { id: 'L6', label: '第六課 〈石虎是我們的龍貓〉', subUnits: ['6-1 作者與背景', '6-2 課文賞析', '6-3 環境倫理', '6-4 論說文結構'] },
+      { id: 'L7', label: '第七課 〈五柳先生傳〉（陶淵明）', subUnits: ['7-1 作者與背景', '7-2 文言文理解', '7-3 人物描寫', '7-4 主旨探討'] },
+      { id: 'L8', label: '第八課 〈摩登土產鳳梨酥〉', subUnits: ['8-1 作者與背景', '8-2 課文賞析', '8-3 飲食文學', '8-4 在地文化'] },
+      { id: 'L9', label: '第九課 〈謝天〉（陳之藩）', subUnits: ['9-1 作者與背景', '9-2 課文賞析', '9-3 論說文結構', '9-4 生命教育'] },
+      { id: 'L10', label: '第十課 〈貓的天堂〉', subUnits: ['10-1 作者與背景', '10-2 課文賞析', '10-3 翻譯文學', '10-4 自由與束縛'] },
+      { id: 'grammar1', label: '語文常識（一）漢字的結構', subUnits: ['六書（象形、指事、會意、形聲、轉注、假借）', '漢字結構分析'] },
+      { id: 'grammar2', label: '語文常識（二）漢字的流變與書法欣賞', subUnits: ['字體演變（甲骨文→金文→篆書→隸書→楷書→行書）', '書法名家與作品'] }
+    ]},
+    { id: 'english', label: '英文', icon: '🇬🇧', units: [
+      { id: 'U1', label: 'Unit 1 What Do You Do in Your Free Time?', subUnits: ['1-1 頻率副詞 (Always/Usually/Sometimes)', '1-2 從屬連接詞 (Before/After)', '1-3 句型與對話練習'] },
+      { id: 'U2', label: 'Unit 2 How Often Do You Go to the Library?', subUnits: ['2-1 頻率副詞 (Always/Often/Never)', '2-2 How often 問句與回答', '2-3 生活會話應用'] },
+      { id: 'U3', label: 'Unit 3 Which Painting Do You Like?', subUnits: ['3-1 選擇問句 (Which)', '3-2 不定代名詞 (One/Ones)', '3-3 描述喜好'] },
+      { id: 'U4', label: 'Unit 4 How Much Flour Do You Need?', subUnits: ['4-1 可數與不可數名詞', '4-2 數量詞 (How much/How many)', '4-3 購物與料理對話'] },
+      { id: 'U5', label: 'Unit 5 There Was a Lot of Trash in the Sea', subUnits: ['5-1 Be動詞過去式 (Was/Were)', '5-2 There be 過去式', '5-3 環境議題討論'] },
+      { id: 'U6', label: 'Unit 6 I Took a Trip to India Last Month', subUnits: ['6-1 規則動詞過去式', '6-2 不規則動詞過去式', '6-3 旅遊經驗分享'] }
+    ]},
+    { id: 'math', label: '數學', icon: '📐', units: [
+      { id: 'C1', label: '第1章 整數的運算', subUnits: ['1-1 正數與負數：數線、相反數、絕對值', '1-2 正負數的加減：交換律與結合律', '1-3 正負數的乘除：四則運算', '1-4 指數記法與科學記號'] },
+      { id: 'C2', label: '第2章 分數的運算', subUnits: ['2-1 質因數分解：倍數判別、標準分解式', '2-2 最大公因數與最小公倍數', '2-3 分數的四則運算：約分擴分', '2-4 指數律'] },
+      { id: 'C3', label: '第3章 一元一次方程式', subUnits: ['3-1 式子的運算：以符號代表數', '3-2 解一元一次方程式：等量公理', '3-3 應用問題（雞兔同籠、年齡、速率）'] }
+    ]},
+    { id: 'science', label: '生物', icon: '🌿', units: [
+      { id: 'B1', label: '第一章 生殖', subUnits: ['1-1 細胞的分裂：染色體、減數分裂', '1-2 無性生殖：分裂、出芽、嫁接', '1-3 有性生殖：人類生殖、開花植物'] },
+      { id: 'B2', label: '第二章 遺傳', subUnits: ['2-1 孟德爾遺傳：棋盤方格法', '2-2 人類遺傳：ABO血型、性別遺傳', '2-3 突變與遺傳疾病', '2-4 生物技術：複製、基因轉殖'] },
+      { id: 'B3', label: '第三章 生物的演化與分類', subUnits: ['3-1 化石與演化', '3-2 命名與分類：二名法、階層分類', '3-3 原核、原生生物及真菌界', '3-4 植物界：蘚苔蕨類裸子被子', '3-5 動物界：無脊椎與脊椎'] },
+      { id: 'B4', label: '第四章 生態系統', subUnits: ['4-1 族群、群集與演替', '4-2 生物間的互動關係', '4-3 生態系：食物鏈、能量塔', '4-4 生態系的類型'] },
+      { id: 'B5', label: '第五章 生物多樣性與環境', subUnits: ['5-1 生物多樣性', '5-2 面臨的危機', '5-3 保育的落實', '5-4 環境永續發展：SDGs'] }
+    ]},
+    { id: 'civics', label: '公民', icon: '⚖️', units: [
+      { id: 'CIV1', label: '第1章 多元文化', subUnits: ['1-1 文化特性與位階', '1-2 文化不平等', '1-3 尊重與包容'] },
+      { id: 'CIV2', label: '第2章 社會規範', subUnits: ['2-1 道德與習俗', '2-2 宗教與法律', '2-3 社會規範的功能'] },
+      { id: 'CIV3', label: '第3章 團體與志願結社', subUnits: ['3-1 參與團體的原因', '3-2 志願結社特徵', '3-3 公益組織案例'] },
+      { id: 'CIV4', label: '第4章 公共意見', subUnits: ['4-1 民意的形成', '4-2 媒體影響', '4-3 媒體識讀'] },
+      { id: 'CIV5', label: '第5章 公平正義', subUnits: ['5-1 社會地位不平等', '5-2 社會正義的追求', '5-3 機會平等與實質平等'] },
+      { id: 'CIV6', label: '第6章 社會安全與國家責任', subUnits: ['6-1 人性尊嚴', '6-2 社會安全制度', '6-3 我國的社會福利'] }
+    ]},
+    { id: 'history', label: '歷史', icon: '📜', units: [
+      { id: 'H1', label: '第1章 日治時期的政治', subUnits: ['1-1 殖民體制建立', '1-2 警察制度', '1-3 理蕃政策'] },
+      { id: 'H2', label: '第2章 日治時期的經濟', subUnits: ['2-1 基礎建設（嘉南大圳）', '2-2 糖業與工業發展', '2-3 南進政策'] },
+      { id: 'H3', label: '第3章 日治時期的社會與文化', subUnits: ['3-1 現代教育', '3-2 政治社會運動', '3-3 新舊文化交替'] },
+      { id: 'H4', label: '第4章 戰後台灣的政治', subUnits: ['4-1 二二八事件', '4-2 戒嚴與白色恐怖', '4-3 解嚴與民主化'] },
+      { id: 'H5', label: '第5章 戰後台灣的外交', subUnits: ['5-1 台美日關係', '5-2 重返國際社會', '5-3 兩岸關係演變'] },
+      { id: 'H6', label: '第6章 戰後台灣的經濟與社會', subUnits: ['6-1 土地改革', '6-2 十大建設與經濟奇蹟', '6-3 多元文化與社會變遷'] }
+    ]},
+    { id: 'geography', label: '地理', icon: '🌍', units: [
+      { id: 'G1', label: '第1章 人口成長與分布', subUnits: ['1-1 自然增加與社會增加', '1-2 人口金字塔', '1-3 人口分布不均的原因'] },
+      { id: 'G2', label: '第2章 人口組成與族群文化', subUnits: ['2-1 年齡與性別結構', '2-2 多元族群（原住民、漢人、新住民）', '2-3 文化特色'] },
+      { id: 'G3', label: '第3章 第一級產業', subUnits: ['3-1 農林漁牧業特色', '3-2 台灣農業轉型', '3-3 觀光農場案例'] },
+      { id: 'G4', label: '第4章 第二、三級產業', subUnits: ['4-1 工業區位選擇', '4-2 台灣工業演進', '4-3 服務業與全球貿易'] },
+      { id: 'G5', label: '第5章 聚落體系與都市發展', subUnits: ['5-1 鄉村與都市區別', '5-2 交通對聚落的影響', '5-3 都市化現象'] },
+      { id: 'G6', label: '第6章 區域發展與差異', subUnits: ['6-1 北中東南離島發展重點', '6-2 城鄉差距問題'] }
+    ]}
+  ]
+};
+
 let curriculumData = null;
+let _curriculumLoadPromise = null;
 
 async function loadCurriculum() {
   try {
-    const res = await fetch('data/manifest.json');
-    const manifest = await res.json();
-    const subjects = await Promise.all(manifest.subjects.map(async (s) => {
-      const subRes = await fetch(s.file);
-      const subData = await subRes.json();
-      return { id: s.id, label: s.label, icon: s.icon, units: subData.units };
-    }));
-    curriculumData = { label: manifest.label, subjects };
-  } catch (e) {
+    const doc = await db.collection('admin_config').doc('curriculum').get();
+    if (doc.exists) {
+      curriculumData = doc.data();
+    } else {
+      curriculumData = JSON.parse(JSON.stringify(DEFAULT_CURRICULUM));
+      await db.collection('admin_config').doc('curriculum').set(curriculumData);
+    }
+  } catch(e) {
     console.error('課綱載入失敗', e);
-    curriculumData = { label: '課綱載入失敗', subjects: [] };
+    curriculumData = { label: '課綱載入失敗', grade: '', subjects: [] };
   }
 }
-const _curriculumLoadPromise = loadCurriculum();
+_curriculumLoadPromise = loadCurriculum();
 
 /* ============================================================
    QUIZ — UI
@@ -2322,54 +2386,101 @@ async function renderAdmin() {
 
   try {
     // Get admin config from Firestore
-    let config = { geminiKeys: [], features: { leaderboard: true, notes: true, review: true }, maintenanceMode: false };
+    let config = { geminiKeys: [], groqKeys: [], openrouterKeys: [], features: { leaderboard: true, notes: true, review: true }, maintenanceMode: false };
     try {
       const doc = await db.collection('admin_config').doc('settings').get();
       if (doc.exists) config = doc.data();
     } catch(e) { /* use defaults */ }
+    if (!config.geminiKeys) config.geminiKeys = [];
+    if (!config.groqKeys) config.groqKeys = [];
+    if (!config.openrouterKeys) config.openrouterKeys = [];
+
+    state.adminData = config;
+
+    // Get curriculum edit copy
+    state.adminCurriculum = JSON.parse(JSON.stringify(curriculumData || { label: '課綱', grade: '', subjects: [] }));
 
     // Get user count
     let userCount = 0;
-    try {
-      const uSnap = await db.collection('profiles').get();
-      userCount = uSnap.size;
-    } catch(e) { /* ignore */ }
+    try { const uSnap = await db.collection('profiles').get(); userCount = uSnap.size; } catch(e) { /* ignore */ }
 
     // Get session count
     let sessionCount = 0;
-    try {
-      const sSnap = await db.collection('quiz_sessions').get();
-      sessionCount = sSnap.size;
-    } catch(e) { /* ignore */ }
+    try { const sSnap = await db.collection('quiz_sessions').get(); sessionCount = sSnap.size; } catch(e) { /* ignore */ }
 
-    state.adminData = config;
+    // Build key sections HTML
+    function keySection(model, label, keys) {
+      return `
+        <div style="margin-bottom:16px">
+          <div style="font-weight:600;font-size:.9375rem;margin-bottom:8px">${label} <span class="tag tag-sm tag-blue">${keys.length} 組</span></div>
+          ${keys.map((k, i) => `
+            <div style="display:flex;gap:8px;margin-bottom:6px" id="keyRow_${model}_${i}">
+              <input class="api-key-input" value="${k.replace(/./g,'•')}" placeholder="${label} Key ${i+1}"
+                onfocus="this.value=state.adminData?.${model}Keys?.[${i}]||''" onblur="if(!this.value.trim()){this.value='${k.replace(/./g,'•')}'}else{updateKeyModel('${model}',${i},this.value)}"
+                onchange="updateKeyModel('${model}',${i},this.value)">
+              <span class="tag tag-sm ${getKeyHealthModel(model, i) === 'healthy' ? 'tag-green' : 'tag-red'}" id="keyStatus_${model}_${i}">${getKeyHealthModel(model, i)}</span>
+              <button class="btn btn-ghost btn-sm" onclick="removeKeyModel('${model}',${i})" style="color:var(--danger);padding:4px 8px">✕</button>
+            </div>
+          `).join('')}
+          <button class="btn btn-secondary btn-sm" onclick="addKeyModel('${model}')">+ 新增 ${label} Key</button>
+        </div>`;
+    }
 
     el.innerHTML = `
       <div class="admin-section">
         <h2>🔑 API Key 資源池</h2>
         <div class="card">
-          <div style="margin-bottom:12px">
-            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-              <span class="tag tag-green">Gemini ${KEY_POOLS.gemini.length} 組</span>
-              <span class="tag tag-blue">OpenRouter ${KEY_POOLS.openrouter.length} 組</span>
-              <span class="tag tag-yellow">Groq ${KEY_POOLS.groq.length} 組</span>
-            </div>
-            <div id="keyHealthDisplay"></div>
+          ${keySection('gemini', 'Gemini', config.geminiKeys)}
+          ${keySection('groq', 'Groq', config.groqKeys)}
+          ${keySection('openrouter', 'OpenRouter', config.openrouterKeys)}
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="saveAdminConfig()">💾 儲存 API Keys</button>
+            <button class="btn btn-secondary" onclick="syncKeysFromFirestore()">🔄 重新同步</button>
           </div>
-          <div id="apiKeysList">
-            ${(config.geminiKeys||['']).map((k,i) => `
-              <div style="display:flex;gap:8px;margin-bottom:8px">
-                <input class="api-key-input" value="${k}" placeholder="API Key ${i+1}" onchange="updateKey(${i},this.value)">
-                <span class="tag ${getKeyHealth(i) === 'healthy' ? 'tag-green' : 'tag-red'} tag-sm" id="keyStatus_${i}">${getKeyHealth(i)}</span>
-                <button class="btn btn-ghost btn-sm" onclick="removeKey(${i})" style="color:var(--danger)">✕</button>
+          <p class="text-xs text-muted mt-2">Key 遮罩顯示 · 點擊輸入框可查看/編輯 · 系統自動輪詢多組 Key</p>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <h2>📚 課綱管理</h2>
+        <div class="card">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+            <div class="input-group" style="flex:2;min-width:200px">
+              <label class="input-label">課綱標題</label>
+              <input class="input" id="curLabel" value="${state.adminCurriculum.label}" onchange="state.adminCurriculum.label=this.value">
+            </div>
+            <div class="input-group" style="flex:1;min-width:120px">
+              <label class="input-label">年級</label>
+              <input class="input" id="curGrade" value="${state.adminCurriculum.grade||''}" onchange="state.adminCurriculum.grade=this.value">
+            </div>
+          </div>
+          <div id="curriculumSubjectsList">
+            ${state.adminCurriculum.subjects.map((s, si) => `
+              <div style="background:var(--gray-50);border-radius:var(--radius-sm);padding:12px;margin-bottom:10px">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+                  <input style="width:80px;padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:.8125rem" value="${s.id}" placeholder="ID" onchange="state.adminCurriculum.subjects[${si}].id=this.value">
+                  <input style="flex:1;min-width:100px;padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:.8125rem" value="${s.label}" placeholder="科目名稱" onchange="state.adminCurriculum.subjects[${si}].label=this.value">
+                  <input style="width:50px;padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:.8125rem;text-align:center" value="${s.icon}" placeholder="圖示" onchange="state.adminCurriculum.subjects[${si}].icon=this.value">
+                  <button class="btn btn-ghost btn-sm" onclick="deleteSubject(${si})" style="color:var(--danger)">🗑️</button>
+                </div>
+                <div style="padding-left:12px;border-left:2px solid var(--gray-200)">
+                  ${s.units.map((u, ui) => `
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;padding:6px 8px;background:#fff;border-radius:6px">
+                      <input style="width:60px;padding:3px 6px;border:1px solid var(--gray-200);border-radius:4px;font-size:.75rem" value="${u.id}" placeholder="ID" onchange="state.adminCurriculum.subjects[${si}].units[${ui}].id=this.value">
+                      <input style="flex:2;min-width:120px;padding:3px 6px;border:1px solid var(--gray-200);border-radius:4px;font-size:.75rem" value="${u.label}" placeholder="單元名稱" onchange="state.adminCurriculum.subjects[${si}].units[${ui}].label=this.value">
+                      <input style="flex:3;min-width:150px;padding:3px 6px;border:1px solid var(--gray-200);border-radius:4px;font-size:.75rem" value="${(u.subUnits||[]).join(', ')}" placeholder="子單元（逗號分隔）" onchange="state.adminCurriculum.subjects[${si}].units[${ui}].subUnits=this.value.split(',').map(s=>s.trim()).filter(Boolean)">
+                      <button class="btn btn-ghost btn-sm" onclick="deleteUnit(${si},${ui})" style="color:var(--danger);padding:2px 6px">✕</button>
+                    </div>
+                  `).join('')}
+                  <button class="btn btn-ghost btn-sm" onclick="addUnit(${si})" style="color:var(--primary);padding:4px 10px;font-size:.75rem">➕ 新增單元</button>
+                </div>
               </div>
             `).join('')}
           </div>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="btn btn-secondary btn-sm" onclick="addKey()">+ 新增 Key</button>
-            <button class="btn btn-primary btn-sm" onclick="saveAdminConfig()">💾 儲存</button>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-secondary" onclick="addSubject()">➕ 新增科目</button>
+            <button class="btn btn-primary" onclick="saveCurriculum()">💾 儲存課綱</button>
           </div>
-          <p class="text-xs text-muted mt-2">系統自動輪詢多組 Key，每分鐘最多 15 次請求</p>
         </div>
       </div>
 
@@ -2429,32 +2540,30 @@ async function renderAdmin() {
   }
 }
 
-function getKeyHealth(idx) {
-  const h = keyHealth['gemini_' + idx];
+// ===== API Key Helpers (multi-model) =====
+
+function getKeyHealthModel(model, idx) {
+  const h = keyHealth[model + '_' + idx];
   if (!h) return 'unknown';
   if (h.status === 'cooldown') return '冷卻中';
   return 'healthy';
 }
 
-function addKey() {
-  const keys = [...(state.adminData?.geminiKeys || []), ''];
-  state.adminData.geminiKeys = keys;
-  const list = $('apiKeysList');
-  const idx = keys.length - 1;
-  list.insertAdjacentHTML('beforeend', `
-    <div style="display:flex;gap:8px;margin-bottom:8px" id="keyRow_${idx}">
-      <input class="api-key-input" value="" placeholder="API Key ${idx+1}" onchange="updateKey(${idx},this.value)">
-      <button class="btn btn-ghost btn-sm" onclick="removeKey(${idx})" style="color:var(--danger)">✕</button>
-    </div>
-  `);
+function addKeyModel(model) {
+  const key = model + 'Keys';
+  if (!state.adminData[key]) state.adminData[key] = [];
+  state.adminData[key] = [...state.adminData[key], ''];
+  renderAdmin();
 }
 
-function updateKey(idx, val) {
-  if (state.adminData?.geminiKeys) state.adminData.geminiKeys[idx] = val;
+function updateKeyModel(model, idx, val) {
+  const key = model + 'Keys';
+  if (state.adminData[key]) state.adminData[key][idx] = val;
 }
 
-function removeKey(idx) {
-  if (state.adminData?.geminiKeys) state.adminData.geminiKeys.splice(idx, 1);
+function removeKeyModel(model, idx) {
+  const key = model + 'Keys';
+  if (state.adminData[key]) state.adminData[key].splice(idx, 1);
   renderAdmin();
 }
 
@@ -2471,18 +2580,92 @@ function toggleMaintenance() {
 async function saveAdminConfig() {
   loading(true);
   try {
-    await db.collection('admin_config').doc('settings').set(state.adminData || {}, { merge: true });
-    if (state.adminData?.geminiKeys) {
-      KEY_POOLS.gemini = state.adminData.geminiKeys.filter(k => k.trim());
-      Object.entries(KEY_POOLS).forEach(([model, keys]) => {
-        keys.forEach((k, i) => {
+    const data = state.adminData || {};
+    await db.collection('admin_config').doc('settings').set(data, { merge: true });
+    ['gemini', 'groq', 'openrouter'].forEach(model => {
+      const key = model + 'Keys';
+      if (data[key]) {
+        KEY_POOLS[model] = data[key].filter(k => k.trim());
+        KEY_POOLS[model].forEach((k, i) => {
           const hk = model + '_' + i;
           if (!keyHealth[hk]) keyHealth[hk] = { key: k, status: 'healthy', cooldownUntil: 0, lastUsed: 0 };
           else keyHealth[hk].key = k;
         });
+      }
+    });
+    toast('設定已儲存，所有 API Key 已同步', 'success');
+  } catch(e) {
+    toast('儲存失敗：' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function syncKeysFromFirestore() {
+  loading(true);
+  try {
+    const doc = await db.collection('admin_config').doc('settings').get();
+    if (doc.exists) {
+      const data = doc.data();
+      state.adminData = data;
+      ['gemini', 'groq', 'openrouter'].forEach(model => {
+        const key = model + 'Keys';
+        if (data[key]) {
+          KEY_POOLS[model] = data[key].filter(k => k.trim());
+          KEY_POOLS[model].forEach((k, i) => {
+            const hk = model + '_' + i;
+            if (!keyHealth[hk]) keyHealth[hk] = { key: k, status: 'healthy', cooldownUntil: 0, lastUsed: 0 };
+            else keyHealth[hk].key = k;
+          });
+        }
       });
+      toast('已從 Firestore 重新同步', 'success');
     }
-    toast('設定已儲存，API Key 已同步', 'success');
+  } catch(e) { toast('同步失敗', 'error'); }
+  loading(false);
+  renderAdmin();
+}
+
+// ===== Curriculum CRUD =====
+
+function addSubject() {
+  if (!state.adminCurriculum) return;
+  const id = 'subj' + (state.adminCurriculum.subjects.length + 1);
+  state.adminCurriculum.subjects.push({ id, label: '新科目', icon: '📚', units: [] });
+  renderAdmin();
+}
+
+function deleteSubject(si) {
+  if (!state.adminCurriculum || !confirm('確定刪除「' + state.adminCurriculum.subjects[si]?.label + '」？')) return;
+  state.adminCurriculum.subjects.splice(si, 1);
+  renderAdmin();
+}
+
+function addUnit(si) {
+  if (!state.adminCurriculum) return;
+  const s = state.adminCurriculum.subjects[si];
+  if (!s) return;
+  const id = 'U' + (s.units.length + 1);
+  s.units.push({ id, label: '新單元', subUnits: [] });
+  renderAdmin();
+}
+
+function deleteUnit(si, ui) {
+  if (!state.adminCurriculum) return;
+  const s = state.adminCurriculum.subjects[si];
+  if (!s || !confirm('確定刪除「' + s.units[ui]?.label + '」？')) return;
+  s.units.splice(ui, 1);
+  renderAdmin();
+}
+
+async function saveCurriculum() {
+  if (!state.adminCurriculum) return;
+  loading(true);
+  try {
+    const data = JSON.parse(JSON.stringify(state.adminCurriculum));
+    await db.collection('admin_config').doc('curriculum').set(data);
+    curriculumData = data;
+    toast('課綱已儲存', 'success');
   } catch(e) {
     toast('儲存失敗：' + e.message, 'error');
   } finally {
