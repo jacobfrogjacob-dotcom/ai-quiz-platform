@@ -4,6 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>AI 無限題庫</title>
+<script>
+// In-app browser detection
+(function(){
+  const ua = navigator.userAgent.toLowerCase();
+  const isInApp = /line|fb_iab|fban|fbav|instagram|kakaotalk|twitter for iphone|twitter for android/i.test(ua);
+  if (isInApp) {
+    document.documentElement.innerHTML = `
+      <style>
+        body { font-family: 'Noto Sans TC', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f6f7f9; text-align: center; padding: 20px; }
+        .card { background: #fff; border-radius: 16px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,.1); max-width: 360px; }
+        h2 { font-size: 1.25rem; margin-bottom: 8px; }
+        p { font-size: .875rem; color: #666; line-height: 1.6; }
+        .btn { display: inline-block; margin-top: 16px; padding: 12px 24px; background: #0B5EAC; color: #fff; border-radius: 20px; text-decoration: none; font-weight: 600; font-size: .9375rem; }
+      </style>
+      <div class="card">
+        <div style="font-size:3rem;margin-bottom:12px">🌐</div>
+        <h2>請使用 Chrome 開啟</h2>
+        <p>為獲得最佳體驗，請點右上角「⋯」<br>選擇「在 Chrome 中開啟」</p>
+        <a class="btn" href="intent://${window.location.host}${window.location.pathname}#Intent;scheme=https;package=com.android.chrome;end">開啟 Chrome</a>
+      </div>`;
+  }
+})();
+</script>
 
 <!-- ===== Firebase SDK ===== -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js">
@@ -872,19 +895,8 @@ async function updateProfile(data) {
 }
 
 function signInWithGoogle() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  toast('正在開啟登入視窗...', 'info');
-  auth.signInWithPopup(provider).then(() => {
-    toast('登入成功！', 'success');
-  }).catch(e => {
-    if (e.code === 'auth/popup-blocked') {
-      toast('⚠️ 瀏覽器阻擋了彈出視窗，請允許此網站彈出視窗後重試', 'error');
-    } else if (e.code === 'auth/popup-closed-by-user') {
-      toast('已取消登入', 'info');
-    } else {
-      toast('登入失敗：' + e.message, 'error');
-    }
-  });
+  toast('正在導向 Google 登入...', 'info');
+  auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
 }
 
 function signOut() {
@@ -1253,9 +1265,14 @@ function startTimer() {
 function shareResult(correct, total, acc) {
   const btn = event?.target?.closest('button');
   const topic = btn?.dataset?.topic ? decodeURIComponent(btn.dataset.topic) : '練習';
-  const text = `📚 AI 題庫練習結果\n\n主題：${topic}\n正確：${correct}/${total}\n正確率：${acc}%\n\n— 來自 AI 無限題庫`;
+  const url = window.location.origin + window.location.pathname;
+  const isAndroid = /android/i.test(navigator.userAgent);
+  const shareUrl = isAndroid
+    ? `intent://${window.location.host}${window.location.pathname}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https://${window.location.host}${window.location.pathname};end`
+    : url;
+  const text = `📚 AI 題庫練習結果\n\n主題：${topic}\n正確：${correct}/${total}\n正確率：${acc}%\n\n${shareUrl}`;
   if (navigator.share) {
-    navigator.share({ title: 'AI 題庫練習結果', text }).catch(() => toast('分享已取消', 'info'));
+    navigator.share({ title: 'AI 題庫練習結果', text, url: shareUrl }).catch(() => toast('分享已取消', 'info'));
   } else {
     navigator.clipboard.writeText(text).then(() => toast('結果已複製到剪貼簿', 'success')).catch(() => toast('複製失敗', 'error'));
   }
