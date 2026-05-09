@@ -821,6 +821,10 @@ window.addEventListener('hashchange', handleRoute);
 auth.onAuthStateChanged(async (user) => {
   state.user = user;
   if (user) {
+    // Retry loading curriculum if it failed earlier (before auth)
+    if (!curriculumData || curriculumData.label === '課綱載入失敗') {
+      await loadCurriculum();
+    }
     await loadProfile(user.uid);
     await loadBookmarks();
   } else {
