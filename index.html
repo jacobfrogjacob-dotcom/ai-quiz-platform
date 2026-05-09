@@ -859,8 +859,12 @@ auth.onAuthStateChanged(async (user) => {
   handleRoute();
 });
 
-// Handle redirect result (kept for compatibility)
-auth.getRedirectResult().catch(() => {});
+// Handle redirect result — ensure login state after Google redirect
+auth.getRedirectResult().then((result) => {
+  if (result.user) toast('登入成功！', 'success');
+}).catch((e) => {
+  console.warn('Redirect result error (non-fatal):', e.code);
+});
 
 async function loadProfile(uid) {
   try {
@@ -936,12 +940,14 @@ function updateNav() {
 
   const userEl = $('navUser');
   if (state.user) {
+    const avatarUrl = state.profile?.avatarUrl || state.user.photoURL;
+    const nickname = state.profile?.nickname || state.user.displayName || state.user.email?.split('@')[0] || '用戶';
     userEl.innerHTML = `
       <a href="#profile" onclick="navigate('profile')" style="display:flex;align-items:center;gap:6px;text-decoration:none;color:rgba(255,255,255,.8)">
-        ${state.profile?.avatarUrl
-          ? `<img src="${state.profile.avatarUrl}" class="nav-avatar" alt="">`
-          : `<div class="nav-avatar-placeholder">${(state.profile?.nickname || '?')[0]}</div>`}
-        <span class="text-sm" style="font-weight:500">${state.profile?.nickname || ''}</span>
+        ${avatarUrl
+          ? `<img src="${avatarUrl}" class="nav-avatar" alt="">`
+          : `<div class="nav-avatar-placeholder">${nickname[0]}</div>`}
+        <span class="text-sm" style="font-weight:500">${nickname}</span>
       </a>
       <button class="btn btn-sm" onclick="signOut()" title="登出" style="background:rgba(255,255,255,.15);color:#fff;border:none">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1029,7 +1035,7 @@ function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ===== AI Call Router =====
 async function callAI(prompt) {
   let lastErr;
-  const textChain = ['groq', 'openrouter'];
+  const textChain = ['groq', 'openrouter', 'gemini'];
   for (const model of textChain) {
     while (_keyIdx[model] < KEY_POOLS[model].length) {
       const idx = _keyIdx[model];
@@ -1042,7 +1048,8 @@ async function callAI(prompt) {
         await rateLimit(model);
         let result;
         if (model === 'groq') result = await callGroq(prompt, idx);
-        else result = await callOpenRouter(prompt, idx);
+        else if (model === 'openrouter') result = await callOpenRouter(prompt, idx);
+        else result = await callGemini(prompt, idx);
         health.status = 'healthy';
         health.lastUsed = Date.now();
         return result;
@@ -1067,7 +1074,7 @@ async function callAI(prompt) {
 // ===== Fast Grading (Groq優先) =====
 async function callAIFast(prompt) {
   let lastErr;
-  const fastChain = ['groq', 'openrouter'];
+  const fastChain = ['groq', 'openrouter', 'gemini'];
   for (const model of fastChain) {
     while (_keyIdx[model] < KEY_POOLS[model].length) {
       const idx = _keyIdx[model];
@@ -1079,7 +1086,8 @@ async function callAIFast(prompt) {
         await rateLimit(model);
         let result;
         if (model === 'groq') result = await callGroq(prompt, idx);
-        else result = await callOpenRouter(prompt, idx);
+        else if (model === 'openrouter') result = await callOpenRouter(prompt, idx);
+        else result = await callGemini(prompt, idx);
         health.status = 'healthy';
         health.lastUsed = Date.now();
         return result;
@@ -2814,22 +2822,24 @@ function renderProfile() {
   if (!state.user) { el.innerHTML = '<div class="text-center text-muted" style="padding:40px">請先登入</div>'; return; }
 
   const p = state.profile || {};
+  const avatarUrl = p.avatarUrl || state.user.photoURL;
+  const nickname = p.nickname || state.user.displayName || state.user.email?.split('@')[0] || '用戶';
   el.innerHTML = `
     <div class="card" style="max-width:440px;margin:0 auto">
       <div class="text-center" style="margin-bottom:20px">
-        ${p.avatarUrl
-          ? `<img src="${p.avatarUrl}" class="profile-avatar-lg" style="width:72px;height:72px;border-radius:50%;object-fit:cover">`
-          : `<div style="width:72px;height:72px;border-radius:50%;background:var(--gray-200);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:1.5rem;color:var(--gray-400)">${(p.nickname||'?')[0]}</div>`}
+        ${avatarUrl
+          ? `<img src="${avatarUrl}" class="profile-avatar-lg" style="width:72px;height:72px;border-radius:50%;object-fit:cover">`
+          : `<div style="width:72px;height:72px;border-radius:50%;background:var(--gray-200);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:1.5rem;color:var(--gray-400)">${nickname[0]}</div>`}
         <h2 style="margin-bottom:0">個人設定</h2>
         <p class="text-sm text-muted">設定用於筆記浮水印與排行榜</p>
       </div>
       <div class="input-group">
         <label class="input-label">暱稱（顯示名稱）</label>
-        <input class="input" id="pfNickname" value="${p.nickname || ''}" placeholder="例如：學霸小明">
+        <input class="input" id="pfNickname" value="${nickname}" placeholder="例如：學霸小明">
       </div>
       <div class="input-group">
         <label class="input-label">全名（用於證書）</label>
-        <input class="input" id="pfFullname" value="${p.fullName || ''}" placeholder="您的真實姓名">
+        <input class="input" id="pfFullname" value="${p.fullName || state.user.displayName || ''}" placeholder="您的真實姓名">
       </div>
       <div class="input-group">
         <label class="input-label">電子郵件</label>
