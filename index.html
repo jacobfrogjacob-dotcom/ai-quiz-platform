@@ -27,31 +27,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
 /* ============================================================
-   FONT: TaipeiSansTC（多來源CDN + 在地備援）
+   FONT: Noto Sans TC（繁體黑體，非楷書）
    ============================================================ */
-@font-face {
-  font-family: 'TaipeiSansTC';
-  src:
-    url('https://cdn.jsdelivr.net/gh/taipei-font/taipei-font@master/TaipeiSansTC-Regular.woff2') format('woff2'),
-    url('https://raw.githubusercontent.com/taipei-font/taipei-font/master/TaipeiSansTC-Regular.woff2') format('woff2'),
-    url('https://fonts.gstatic.com/noto-sans-tc/main.woff2') format('woff2');
-  font-weight: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'TaipeiSansTC';
-  src:
-    url('https://cdn.jsdelivr.net/gh/taipei-font/taipei-font@master/TaipeiSansTC-Bold.woff2') format('woff2'),
-    url('https://raw.githubusercontent.com/taipei-font/taipei-font/master/TaipeiSansTC-Bold.woff2') format('woff2');
-  font-weight: bold;
-  font-display: swap;
-}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; scroll-behavior: smooth; }
 
 :root {
-  --font: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', 'TaipeiSansTC', sans-serif;
+  --font: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
   --primary: #2563EB;
   --primary-dark: #1D4ED8;
   --primary-light: #DBEAFE;
@@ -79,11 +62,12 @@ html { font-size: 16px; scroll-behavior: smooth; }
 
 body {
   font-family: var(--font);
-  background: var(--gray-50);
-  color: var(--gray-900);
+  background: var(--bg);
+  color: var(--text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  transition: background .3s, color .3s;
 }
 
 /* ===== NAVBAR ===== */
@@ -440,6 +424,51 @@ th { color: var(--gray-500); font-weight: 500; font-size: .75rem; text-transform
   .question-dots { display: none; }
 }
 
+/* ===== DARK MODE ===== */
+:root {
+  --bg: var(--gray-50);
+  --card-bg: #fff;
+  --card-border: var(--gray-100);
+  --text-primary: var(--gray-900);
+  --text-secondary: var(--gray-500);
+}
+[data-theme="dark"] {
+  --bg: #0f172a;
+  --card-bg: #1e293b;
+  --card-border: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --gray-50: #0f172a;
+  --gray-100: #1e293b;
+  --gray-200: #334155;
+  --gray-300: #475569;
+  --gray-400: #94a3b8;
+  --gray-500: #94a3b8;
+  --gray-600: #cbd5e1;
+  --gray-700: #e2e8f0;
+  --gray-800: #f1f5f9;
+  --gray-900: #f8fafc;
+  --gray-50: #0f172a;
+  --primary-light: #1e3a5f;
+  --warning-light: #3b2f0a;
+  --danger-light: #3b1010;
+  --success-light: #0a3b1a;
+  --shadow: 0 1px 3px rgba(0,0,0,.3);
+  --shadow-md: 0 4px 6px rgba(0,0,0,.4);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,.5);
+}
+[data-theme="dark"] .navbar { background: rgba(15,23,42,.85); border-color: #334155; }
+[data-theme="dark"] .card { background: var(--card-bg); border-color: var(--card-border); }
+[data-theme="dark"] .option-btn { background: #1e293b; border-color: #334155; color: var(--text-primary); }
+[data-theme="dark"] .option-btn:hover:not(:disabled) { border-color: var(--primary); background: #1e3a5f; }
+[data-theme="dark"] .input, [data-theme="dark"] .textarea, [data-theme="dark"] .select { background: #1e293b; border-color: #334155; color: var(--text-primary); }
+[data-theme="dark"] .btn-secondary { background: #334155; color: var(--text-primary); }
+[data-theme="dark"] .markdown-content code { background: #334155; }
+[data-theme="dark"] .question-dot { background: #1e293b; border-color: #334155; color: var(--text-secondary); }
+[data-theme="dark"] .source-tab { background: #334155; color: var(--text-secondary); }
+[data-theme="dark"] .feature-card { background: var(--card-bg); border-color: var(--card-border); }
+[data-theme="dark"] .toast { background: #1e293b; color: var(--text-primary); }
+
 /* ===== MISC ===== */
 .hidden { display: none !important; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -477,6 +506,7 @@ th { color: var(--gray-500); font-weight: 500; font-size: .75rem; text-transform
       <span>AI題庫</span>
     </a>
     <div class="nav-links" id="navLinks"></div>
+    <button class="btn btn-ghost btn-sm" id="darkModeToggle" onclick="toggleDarkMode()" title="切換深色模式" style="flex-shrink:0;font-size:1rem;width:36px;height:36px;padding:0;border-radius:50%">🌙</button>
     <div class="nav-user" id="navUser"></div>
   </div>
 </nav>
@@ -642,7 +672,10 @@ const state = {
   quizMode: 'idle', // idle | taking | reviewing
   dashboardChart: null,
   radarChart: null,
-  adminData: null
+  adminData: null,
+  timerMinutes: 10,
+  timerRemaining: 0,
+  timerInterval: null
 };
 
 /* ============================================================
@@ -680,9 +713,33 @@ function formatDate(d) {
 
 function shuffle(arr) { const a = [...arr]; for (let i = a.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
 
+function accuracy(correct, total) { return total === 0 ? 0 : Math.round(correct/total*100); }
+
 function formatScore(n) {
   if (n >= 1000) return (n/1000).toFixed(n%1000===0?0:1) + 'k';
   return String(n);
+}
+
+function cleanText(s) {
+  if (!s) return '';
+  return String(s).replace(/\$/g, '').replace(/\\\(/g, '').replace(/\\\)/g, '').replace(/\\\[/g, '').replace(/\\\]/g, '');
+}
+
+/* ============================================================
+   DARK MODE
+   ============================================================ */
+function toggleDarkMode() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? '' : 'dark');
+  localStorage.setItem('darkMode', isDark ? '0' : '1');
+  $('darkModeToggle').textContent = isDark ? '🌙' : '☀️';
+}
+function initDarkMode() {
+  if (localStorage.getItem('darkMode') === '1') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    $('darkModeToggle').textContent = '☀️';
+  }
 }
 
 /* ============================================================
@@ -720,8 +777,10 @@ auth.onAuthStateChanged(async (user) => {
   state.user = user;
   if (user) {
     await loadProfile(user.uid);
+    await loadBookmarks();
   } else {
     state.profile = null;
+    state._bookmarked = {};
   }
   updateNav();
   handleRoute();
@@ -758,8 +817,19 @@ async function updateProfile(data) {
 
 function signInWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider).catch(e => {
-    if (e.code !== 'auth/popup-closed-by-user') toast('登入失敗：' + e.message, 'error');
+  toast('正在開啟 Google 登入視窗...', 'info');
+  auth.signInWithPopup(provider).then(() => {
+    toast('登入成功！', 'success');
+  }).catch(e => {
+    if (e.code === 'auth/popup-blocked') {
+      toast('⚠️ 瀏覽器阻擋了彈出視窗，請允許此網站彈出視窗後重試', 'error');
+    } else if (e.code === 'auth/popup-closed-by-user') {
+      toast('已取消登入', 'info');
+    } else if (e.code === 'auth/unauthorized-domain') {
+      toast('🔒 此網域未授權，請在 Firebase 後台 Authentication > Settings 加入此網域', 'error');
+    } else {
+      toast('登入失敗：' + e.message, 'error');
+    }
   });
 }
 
@@ -869,19 +939,19 @@ const MIN_INTERVAL = 2000; // 2s mandatory delay
 
 async function rateLimit(model) {
   const now = Date.now();
-  // Clean old entries (older than 60s)
-  _requestLog = _requestLog.filter(t => now - t < 60000);
-  // Check RPM
+  _requestLog = _requestLog.filter(t => now - t.time < 60000);
   const rpm = RPM_LIMIT[model] || 15;
   const recentCount = _requestLog.filter(t => t.model === model).length;
   if (recentCount >= rpm) {
-    const wait = 60000 - (now - _requestLog.filter(t => t.model === model).sort((a,b)=>b-a)[0]);
+    const sorted = _requestLog.filter(t => t.model === model).sort((a,b) => b.time - a.time);
+    const oldest = sorted[sorted.length - 1];
+    const wait = 60000 - (now - (oldest ? oldest.time : now));
     throw { code: 'RATE_LIMITED', wait, message: `AI 冷卻排隊中，請等待 ${Math.ceil(wait/1000)} 秒...` };
   }
-  // Enforce min interval
-  const lastReq = _requestLog.filter(t => t.model === model).sort((a,b)=>b-a)[0];
-  if (lastReq && now - lastReq < MIN_INTERVAL) {
-    await delay(MIN_INTERVAL - (now - lastReq));
+  const lastReqs = _requestLog.filter(t => t.model === model).sort((a,b) => b.time - a.time);
+  const lastReq = lastReqs[0];
+  if (lastReq && now - lastReq.time < MIN_INTERVAL) {
+    await delay(MIN_INTERVAL - (now - lastReq.time));
   }
   _requestLog.push({ time: now, model });
 }
@@ -1084,13 +1154,14 @@ async function callOpenRouter(prompt, keyIdx) {
 const QUIZ_SYSTEM_PROMPT = `你是一個專業的AI出題系統。根據使用者提供的知識點或教材內容生成測驗題目。
 
 嚴格規則：
-1. 一律以 JSON 格式輸出，格式: { "questions": [ { "type": "multiple-choice|fill-in-blank|true-false|short-answer", "content": "題目", "options": ["A","B","C","D"], "correctAnswer": "正確答案", "explanation": "解析", "knowledgeTags": ["#tag1","#tag2"], "difficulty": "easy|medium|hard" } ] }
-2. 選擇題約40%、填充25%、是非20%、簡答15%
-3. 數學公式以 $...$ 標記 LaTeX
-4. 每個題目至少一個知識點標籤
-5. 難易度合理分布
-6. 對相同知識點，每次必須改變數值、人物名稱與情境設定（無限變形題）
-7. 直接輸出 JSON，不要 Markdown 程式碼區塊`;
+1. 一律以 JSON 格式輸出，格式: { "questions": [ { "type": "multiple-choice", "content": "題目", "options": ["A.選項","B.選項","C.選項","D.選項"], "correctAnswer": "A.選項", "explanation": "詳細解析", "knowledgeTags": ["#tag1","#tag2"], "difficulty": "easy|medium|hard" } ] }
+2. 只出「選擇題」，不出其他題型
+3. 題目和選項一律使用純文字，禁止使用 LaTeX 數學符號、禁止 $ 符號、禁止任何特殊標記
+4. 每個題目必須有 4 個選項 (A.B.C.D.)，且必須有詳細解析
+5. 每個題目至少一個知識點標籤
+6. 難易度合理分布（簡單30%、中等40%、困難30%）
+7. 對相同知識點，每次必須改變數值、人物名稱與情境設定（無限變形題）
+8. 直接輸出 JSON，不要 Markdown 程式碼區塊`;
 
 async function generateQuizFromAI(topic, sourceContent, sourceType) {
   const prompt = `${QUIZ_SYSTEM_PROMPT}\n\n主題：${topic || '一般知識'}\n題數：12\n${sourceContent ? `\n教材內容：\n${sourceContent}\n` : ''}\n請務必變形出題（改變數字、人名、情境），生成 JSON：`;
@@ -1128,6 +1199,76 @@ async function analyzeErrors(answers) {
 }
 
 /* ============================================================
+   TIMER
+   ============================================================ */
+function startTimer() {
+  if (state.timerInterval) clearInterval(state.timerInterval);
+  if (state.timerMinutes <= 0) return;
+  state.timerInterval = setInterval(() => {
+    state.timerRemaining--;
+    const el = $('timerDisplay');
+    if (el) {
+      el.textContent = Math.floor(state.timerRemaining/60) + ':' + String(state.timerRemaining%60).padStart(2,'0');
+      el.className = 'tag ' + (state.timerRemaining <= 60 ? 'tag-red' : state.timerRemaining <= 180 ? 'tag-yellow' : 'tag-gray');
+    }
+    if (state.timerRemaining <= 0) {
+      clearInterval(state.timerInterval);
+      state.timerInterval = null;
+      toast('⏰ 時間到！自動提交答案', 'info');
+      finishQuiz();
+    }
+  }, 1000);
+}
+
+/* ============================================================
+   SHARE
+   ============================================================ */
+function shareResult(correct, total, acc, topic) {
+  const text = `📚 AI 題庫練習結果\n\n主題：${topic}\n正確：${correct}/${total}\n正確率：${acc}%\n\n— 來自 AI 無限題庫`;
+  if (navigator.share) {
+    navigator.share({ title: 'AI 題庫練習結果', text }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(() => toast('結果已複製到剪貼簿', 'success')).catch(() => toast('複製失敗', 'error'));
+  }
+}
+
+/* ============================================================
+   BOOKMARKS
+   ============================================================ */
+state._bookmarked = {};
+
+async function loadBookmarks() {
+  if (!state.user) return;
+  try {
+    const snap = await db.collection('bookmarks').where('userId', '==', state.user.uid).get();
+    state._bookmarked = {};
+    snap.forEach(d => { state._bookmarked[d.data().questionId] = d.id; });
+  } catch(e) { /* ignore */ }
+}
+
+async function toggleBookmark(qid, content, answer, tagsStr) {
+  if (!state.user) { toast('請先登入', 'error'); return; }
+  try {
+    if (state._bookmarked[qid]) {
+      await db.collection('bookmarks').doc(state._bookmarked[qid]).delete();
+      delete state._bookmarked[qid];
+      toast('已取消收藏', 'info');
+    } else {
+      const ref = await db.collection('bookmarks').add({
+        userId: state.user.uid,
+        questionId: qid,
+        content, answer,
+        knowledgeTags: tagsStr ? tagsStr.split(',').filter(Boolean) : [],
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      state._bookmarked[qid] = ref.id;
+      toast('已收藏題目', 'success');
+    }
+    renderQuizReview();
+  } catch(e) { toast('操作失敗', 'error'); }
+}
+
+/* ============================================================
    QUIZ — UI
    ============================================================ */
 function renderQuiz() {
@@ -1154,11 +1295,34 @@ function renderQuiz() {
           </label>
         </div>
       </div>
+      <div style="margin-bottom:16px">
+        <label class="input-label" style="margin-bottom:8px">快速選擇主題</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <button class="tag tag-blue" style="cursor:pointer;padding:6px 14px;font-size:.8125rem" onclick="pickTopic('國中數學 一元二次方程式')">📐 一元二次方程式</button>
+          <button class="tag tag-blue" style="cursor:pointer;padding:6px 14px;font-size:.8125rem" onclick="pickTopic('國中理化 牛頓運動定律')">⚡ 牛頓運動定律</button>
+          <button class="tag tag-blue" style="cursor:pointer;padding:6px 14px;font-size:.8125rem" onclick="pickTopic('高中英文 被動語態')">📖 英文被動語態</button>
+          <button class="tag tag-blue" style="cursor:pointer;padding:6px 14px;font-size:.8125rem" onclick="pickTopic('高中歷史 世界大戰')">🌍 世界大戰</button>
+          <button class="tag tag-blue" style="cursor:pointer;padding:6px 14px;font-size:.8125rem" onclick="pickTopic('國中國文 唐宋八大家')">📝 唐宋八大家</button>
+          <button class="tag tag-blue" style="cursor:pointer;padding:6px 14px;font-size:.8125rem" onclick="pickTopic('高中地理 氣候變遷')">🌤️ 氣候變遷</button>
+        </div>
+      </div>
       <div class="input-group">
-        <label class="input-label">知識點或主題</label>
+        <label class="input-label">或自訂知識點</label>
         <input class="input" id="quizTopic" placeholder="例如：國中數學 一元二次方程式、英文被動語態..." value="${state._lastTopic || ''}">
       </div>
       <div id="sourceExtra"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 14px;background:var(--gray-50);border-radius:10px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span class="text-sm text-muted">計時：</span>
+        <select class="select" style="width:auto;padding:4px 8px;font-size:.8125rem" id="timerSelect">
+          <option value="0">無限制</option>
+          <option value="5">5 分鐘</option>
+          <option value="10" selected>10 分鐘</option>
+          <option value="15">15 分鐘</option>
+          <option value="20">20 分鐘</option>
+          <option value="30">30 分鐘</option>
+        </select>
+      </div>
       <button class="btn btn-primary btn-block btn-lg" onclick="startQuiz()" id="startQuizBtn">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         AI 生成題目
@@ -1172,9 +1336,14 @@ function renderQuiz() {
   state._sourceMode = 'text';
 }
 
-let _sourceMode = 'text';
+function pickTopic(topic) {
+  const input = $('quizTopic');
+  if (input) input.value = topic;
+  state._lastTopic = topic;
+}
+
 function setSourceMode(mode) {
-  _sourceMode = mode;
+  state._sourceMode = mode;
   qsa('.source-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
   const extra = $('sourceExtra');
   if (mode === 'youtube') {
@@ -1190,6 +1359,11 @@ function handleFileUpload(e) {
   const file = e.target.files?.[0];
   if (!file) return;
   if (file.size > 10 * 1024 * 1024) { toast('檔案過大，請小於 10MB', 'error'); return; }
+  if (file.type === 'application/pdf') {
+    toast('📄 PDF 上傳不支援文字提取，請使用圖片或直接輸入文字', 'error');
+    e.target.value = '';
+    return;
+  }
   toast('檔案上傳成功，將以文字模式出題', 'info');
   const reader = new FileReader();
   reader.onload = (ev) => {
@@ -1207,8 +1381,11 @@ async function startQuiz() {
   const youtubeUrl = $('youtubeUrl')?.value.trim();
   if (!topic && !sourceContent && !youtubeUrl) { toast('請輸入知識點或教材內容', 'error'); return; }
 
-  const finalTopic = topic || '自訂學習';
-  const content = _sourceMode === 'youtube' ? `YouTube影片：${youtubeUrl}` : sourceContent;
+    const finalTopic = topic || '自訂學習';
+  const content = state._sourceMode === 'youtube' ? `YouTube影片：${youtubeUrl}` : sourceContent;
+  state.timerMinutes = parseInt($('timerSelect')?.value) || 0;
+  state.timerRemaining = state.timerMinutes * 60;
+  if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
 
   loading(true);
   try {
@@ -1227,6 +1404,7 @@ async function startQuiz() {
     state.quizMode = 'taking';
     state._lastTopic = finalTopic;
     renderQuizTaking();
+    startTimer();
     toast(`已生成 ${questions.length} 題`, 'success');
   } catch(e) {
     console.error(e);
@@ -1301,7 +1479,7 @@ function renderQuizTaking() {
   if (q.type === 'multiple-choice' && q.options) {
     optionsHtml = `<div class="options-list">${q.options.map(o =>
       `<button class="option-btn ${selected === o ? 'selected' : ''}" onclick="answerQuestion('${q.id}','${o.replace(/'/g, "\\'")}')">
-        <span class="option-text">${o}</span>
+        <span class="option-text">${cleanText(o)}</span>
         ${selected === o ? '<svg class="option-icon" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
       </button>`
     ).join('')}</div>`;
@@ -1325,6 +1503,7 @@ function renderQuizTaking() {
       <div style="display:flex;align-items:center;gap:12px">
         <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${progress}%"></div></div>
         <span class="text-sm text-muted">${answered}/${total}</span>
+        ${state.timerMinutes > 0 ? `<span class="tag ${state.timerRemaining <= 60 ? 'tag-red' : state.timerRemaining <= 180 ? 'tag-yellow' : 'tag-gray'}" id="timerDisplay">${Math.floor(state.timerRemaining/60)}:${String(state.timerRemaining%60).padStart(2,'0')}</span>` : ''}
       </div>
     </div>
     <div class="card" style="animation:fadeIn .25s ease">
@@ -1336,7 +1515,7 @@ function renderQuizTaking() {
         </div>
       </div>
       ${tags ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">${tags}</div>` : ''}
-      <div class="question-content">${q.content}</div>
+      <div class="question-content">${cleanText(q.content)}</div>
       ${optionsHtml}
     </div>
     <div class="quiz-nav">
@@ -1373,6 +1552,7 @@ function prevQuestion() {
 }
 
 function finishQuiz() {
+  if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
   const session = state.quizSession;
   const total = session.questions.length;
   let correct = 0;
@@ -1447,10 +1627,20 @@ function renderQuizReview() {
             : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'}
         </div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:.875rem;margin-bottom:4px">${i+1}. ${q.content}</div>
-          ${!ic ? `<div class="text-xs" style="margin-top:4px"><span style="color:var(--danger)">你的答案：${ua}</span>&nbsp;&nbsp;<span style="color:var(--success)">正確答案：${q.correctAnswer}</span></div>` : ''}
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">
-            ${(q.knowledgeTags||[]).map(t => `<span class="tag tag-blue tag-sm">${t}</span>`).join('')}
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+            <div style="font-size:.875rem;margin-bottom:4px;font-weight:600">${i+1}. ${cleanText(q.content)}</div>
+            <button class="btn btn-ghost btn-sm" style="flex-shrink:0;padding:2px 6px;font-size:1rem" onclick="toggleBookmark('${q.id}','${cleanText(q.content).replace(/'/g, "\\'")}','${cleanText(q.correctAnswer).replace(/'/g, "\\'")}','${(q.knowledgeTags||[]).join(',')}')" title="收藏題目">${state._bookmarked?.[q.id] ? '⭐' : '☆'}</button>
+          </div>
+          <div class="text-xs" style="margin-top:4px;padding:6px 8px;border-radius:6px;background:${ic ? 'var(--success-light)' : 'var(--danger-light)'}">
+            <span>你的答案：<strong>${ua}</strong></span>
+            &nbsp;&nbsp;
+            <span style="color:var(--success)">正確答案：<strong>${cleanText(q.correctAnswer)}</strong></span>
+          </div>
+          <div class="text-xs" style="margin-top:6px;padding:8px;background:var(--gray-50);border-radius:6px;color:var(--gray-600)">
+            💡 ${cleanText(q.explanation || '')}
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+            ${(q.knowledgeTags||[]).map(t => `<span class="tag tag-blue tag-sm">${cleanText(t)}</span>`).join('')}
           </div>
         </div>
       </div>
@@ -1471,6 +1661,7 @@ function renderQuizReview() {
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px">
         <button class="btn btn-outline" onclick="retryQuiz()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 重新練習</button>
         <button class="btn btn-primary" onclick="navigate('dashboard')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> 查看儀表板</button>
+        <button class="btn btn-secondary" onclick="shareResult(${correct},${total},${acc},'${session.topic}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> 分享成績</button>
       </div>
     </div>
     <h3 style="margin-bottom:12px">答題詳情</h3>
@@ -1478,6 +1669,7 @@ function renderQuizReview() {
 }
 
 function retryQuiz() {
+  if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
   state.quizMode = 'idle';
   state.quizSession = null;
   state.quizAnswers = {};
@@ -1499,17 +1691,17 @@ async function renderDashboard() {
       .where('userId', '==', state.user.uid)
       .get();
 
-    const sessions = [];
-    sessionsSnap.forEach(d => sessions.push({ id: d.id, ...d.data() }));
-    sessions.sort((a, b) => (b.completedAt||'') > (a.completedAt||'') ? 1 : -1);
-    sessions.splice(20);
+    const allSessions = [];
+    sessionsSnap.forEach(d => allSessions.push({ id: d.id, ...d.data() }));
 
-    const totalQuizzes = sessions.length;
-    const totalCorrect = sessions.reduce((s, x) => s + (x.score || 0), 0);
-    const totalQ = sessions.reduce((s, x) => s + (x.totalQuestions || 0), 0);
+    const totalQuizzes = allSessions.length;
+    const totalCorrect = allSessions.reduce((s, x) => s + (x.score || 0), 0);
+    const totalQ = allSessions.reduce((s, x) => s + (x.totalQuestions || 0), 0);
     const avgAcc = accuracy(totalCorrect, totalQ);
 
-    // Progress data
+    allSessions.sort((a, b) => ((b.completedAt||'') + '').localeCompare((a.completedAt||'') + ''));
+    const sessions = allSessions.slice(0, 20);
+
     const progressData = sessions.slice().reverse().map(s => ({
       date: formatDate(s.completedAt),
       accuracy: s.totalQuestions > 0 ? accuracy(s.score, s.totalQuestions) : 0
@@ -1564,11 +1756,13 @@ async function renderDashboard() {
     }
   } catch(e) {
     console.error(e);
-    el.innerHTML = `<div class="card text-center" style="padding:40px">
-      <div style="font-size:2rem;margin-bottom:12px">📊</div>
-      <p class="text-muted">載入儀表板失敗，請確認 Firebase 已正確設定</p>
-      <p class="text-xs text-muted mt-2">${e.message}</p>
-    </div>`;
+    el.innerHTML = `
+      <div class="card text-center" style="padding:40px">
+        <div style="font-size:2rem;margin-bottom:12px">📊</div>
+        <p class="text-muted">載入儀表板失敗</p>
+        <p class="text-xs text-muted mt-2">${e.message}</p>
+        <p class="text-xs text-muted mt-2">請確認：1. Firebase Firestore 資料庫已建立 2. 規則設為測試模式 3. 已用 Google 登入</p>
+      </div>`;
   }
 }
 
@@ -1644,7 +1838,7 @@ async function renderNotes() {
       .get();
     const notes = [];
     snap.forEach(d => notes.push({ id: d.id, ...d.data() }));
-    notes.sort((a, b) => (b.createdAt||'') > (a.createdAt||'') ? 1 : -1);
+    notes.sort((a, b) => ((b.createdAt||'') + '').localeCompare((a.createdAt||'') + ''));
     notes.splice(20);
 
     if (notes.length === 0) {
@@ -1694,10 +1888,11 @@ async function generateNote() {
     // Fetch recent wrong answers
     const snap = await db.collection('quiz_answers')
       .where('userId', '==', state.user.uid)
+      .limit(100)
       .get();
     const answers = [];
     snap.forEach(d => answers.push(d.data()));
-    answers.sort((a, b) => (b.answeredAt||'') > (a.answeredAt||'') ? 1 : -1);
+    answers.sort((a, b) => ((b.answeredAt||'') + '').localeCompare((a.answeredAt||'') + ''));
     answers.splice(50);
 
     if (answers.length === 0) {
@@ -2011,7 +2206,17 @@ async function saveAdminConfig() {
   loading(true);
   try {
     await db.collection('admin_config').doc('settings').set(state.adminData || {}, { merge: true });
-    toast('設定已儲存', 'success');
+    if (state.adminData?.geminiKeys) {
+      KEY_POOLS.gemini = state.adminData.geminiKeys.filter(k => k.trim());
+      Object.entries(KEY_POOLS).forEach(([model, keys]) => {
+        keys.forEach((k, i) => {
+          const hk = model + '_' + i;
+          if (!keyHealth[hk]) keyHealth[hk] = { key: k, status: 'healthy', cooldownUntil: 0, lastUsed: 0 };
+          else keyHealth[hk].key = k;
+        });
+      });
+    }
+    toast('設定已儲存，API Key 已同步', 'success');
   } catch(e) {
     toast('儲存失敗：' + e.message, 'error');
   } finally {
@@ -2066,7 +2271,7 @@ async function saveProfile() {
 /* ============================================================
    INIT
    ============================================================ */
-// Kick off initial render
+initDarkMode();
 handleRoute();
 </script>
 </body>
