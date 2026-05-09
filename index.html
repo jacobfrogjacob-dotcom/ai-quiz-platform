@@ -1153,7 +1153,7 @@ const QUIZ_SYSTEM_PROMPT = `你是一個專業的AI出題系統，專為「台�
 9. 直接輸出 JSON，不要 Markdown 程式碼區塊`;
 
 async function generateQuizFromAI(topic) {
-  const prompt = `${QUIZ_SYSTEM_PROMPT}\n\n主題：${topic || '一般知識'}\n題數：12\n請務必根據「${topic}」範圍出題（改變數字、人名、情境），生成 JSON：`;
+  const prompt = `${QUIZ_SYSTEM_PROMPT}\n\n主題：${topic || '一般知識'}\n題數：10\n請務必根據「${topic}」範圍出題（改變數字、人名、情境），生成 JSON：`;
   return await callAI(prompt);
 }
 
@@ -1583,25 +1583,52 @@ function renderQuizTaking() {
   let optionsHtml = '';
   const selected = state.quizAnswers[q.id] || '';
 
+  function optClass(o) {
+    if (!selected) return '';
+    if (o === q.correctAnswer) return 'correct';
+    if (o === selected && selected !== q.correctAnswer) return 'wrong';
+    if (o === selected) return 'selected';
+    return '';
+  }
+  function optIcon(o) {
+    if (!selected) return '';
+    if (o === q.correctAnswer) return '<svg class="option-icon" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+    if (o === selected && selected !== q.correctAnswer) return '<svg class="option-icon" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    return '';
+  }
+
   if (q.type === 'multiple-choice' && q.options) {
     optionsHtml = `<div class="options-list">${q.options.map(o =>
-      `<button class="option-btn ${selected === o ? 'selected' : ''}" onclick="answerQuestion('${q.id}','${o.replace(/'/g, "\\'")}')">
+      `<button class="option-btn ${optClass(o)}" onclick="${selected ? '' : "answerQuestion('" + q.id + "','" + o.replace(/'/g, "\\'") + "')"}">
         <span class="option-text">${cleanText(o)}</span>
-        ${selected === o ? '<svg class="option-icon" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+        ${optIcon(o)}
       </button>`
     ).join('')}</div>`;
   } else if (q.type === 'true-false') {
     optionsHtml = `<div class="true-false-group">
       ${['正確','錯誤'].map(o =>
-        `<button class="option-btn ${selected === o ? 'selected' : ''}" onclick="answerQuestion('${q.id}','${o}')">${o}
-          ${selected === o ? '<svg class="option-icon" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
-        </button>`
+        `<button class="option-btn ${optClass(o)}" onclick="${selected ? '' : "answerQuestion('" + q.id + "','" + o + "')"}">${o}${optIcon(o)}</button>`
       ).join('')}
     </div>`;
   } else if (q.type === 'fill-in-blank') {
     optionsHtml = `<input class="fill-input" value="${selected}" oninput="answerQuestion('${q.id}', this.value)" placeholder="請輸入答案..." autocomplete="off">`;
   } else if (q.type === 'short-answer') {
     optionsHtml = `<textarea class="textarea" style="min-height:100px" oninput="answerQuestion('${q.id}', this.value)" placeholder="請輸入你的答案...">${selected}</textarea>`;
+  }
+
+  // Feedback when answered
+  let feedbackHtml = '';
+  if (selected) {
+    const isCorrect = selected.trim().toLowerCase() === (q.correctAnswer || '').trim().toLowerCase();
+    feedbackHtml = `
+      <div style="margin-top:16px;padding:14px 16px;border-radius:var(--radius-sm);background:${isCorrect ? 'var(--success-light)' : 'var(--danger-light)'};border:1px solid ${isCorrect ? 'var(--success)' : 'var(--danger)'}">
+        <div style="display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:8px">
+          <span style="font-size:1.3rem">${isCorrect ? '✅' : '❌'}</span>
+          <span style="color:${isCorrect ? 'var(--success)' : 'var(--danger)'};font-size:.9375rem">${isCorrect ? '正確！' : '錯誤'}</span>
+        </div>
+        ${!isCorrect ? `<div class="text-sm" style="margin-bottom:6px;font-weight:500">正確答案：<span style="color:var(--success)">${q.correctAnswer}</span></div>` : ''}
+        <div class="text-sm" style="color:var(--gray-600);line-height:1.7;margin-top:4px;padding-top:8px;border-top:1px solid ${isCorrect ? 'var(--success)' : 'var(--danger)'}30">${q.explanation || ''}</div>
+      </div>`;
   }
 
   const el = $('quizContent');
@@ -1624,6 +1651,7 @@ function renderQuizTaking() {
       ${tags ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">${tags}</div>` : ''}
       <div class="question-content">${cleanText(q.content)}</div>
       ${optionsHtml}
+      ${feedbackHtml}
     </div>
     <div class="quiz-nav">
       ${prevBtn}
@@ -1633,8 +1661,20 @@ function renderQuizTaking() {
 }
 
 function answerQuestion(qid, answer) {
+  if (state._answering) return;
+  state._answering = true;
   state.quizAnswers[qid] = answer;
   renderQuizTaking();
+  const delay = state.currentQIdx < state.quizSession.questions.length - 1 ? 1500 : 2000;
+  setTimeout(() => {
+    state._answering = false;
+    if (state.currentQIdx < state.quizSession.questions.length - 1) {
+      state.currentQIdx++;
+      renderQuizTaking();
+    } else {
+      finishQuiz();
+    }
+  }, delay);
 }
 
 function goToQuestion(idx) {
@@ -2511,10 +2551,11 @@ async function renderAdmin() {
         <div class="card">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>用戶</th><th>角色</th><th>ID</th></tr></thead>
+              <thead><tr><th>用戶</th><th>角色</th><th>操作</th></tr></thead>
               <tbody id="userTableBody"><tr><td colspan="3" class="text-muted text-sm">載入中...</td></tr></tbody>
             </table>
           </div>
+          <p class="text-xs text-muted mt-2">第一個管理員需在 Firebase Console 手動將 profiles/{uid} 的 role 設為 "admin"</p>
         </div>
       </div>`;
 
@@ -2524,13 +2565,18 @@ async function renderAdmin() {
       const rows = [];
       uSnap.forEach(d => {
         const p = d.data();
+        const isAdmin = p.role === 'admin';
         rows.push(`<tr>
           <td><div style="display:flex;align-items:center;gap:8px">
             ${p.avatarUrl ? `<img src="${p.avatarUrl}" style="width:24px;height:24px;border-radius:50%;object-fit:cover">` : ''}
             <span class="text-sm">${p.nickname || '未知'}</span>
           </div></td>
-          <td><span class="tag ${p.role === 'admin' ? 'tag-yellow' : 'tag-gray'} tag-sm">${p.role || 'user'}</span></td>
-          <td class="text-xs text-muted">${d.id.slice(0,8)}...</td>
+          <td><span class="tag ${isAdmin ? 'tag-yellow' : 'tag-gray'} tag-sm">${isAdmin ? '管理員' : '用戶'}</span></td>
+          <td>
+            <button class="btn btn-ghost btn-sm" onclick="toggleUserRole('${d.id}','${p.role||'user'}')" style="color:${isAdmin ? 'var(--danger)' : 'var(--primary)'};font-size:.75rem">
+              ${isAdmin ? '降級為用戶' : '設為管理員'}
+            </button>
+          </td>
         </tr>`);
       });
       (document.getElementById('userTableBody') || {}).innerHTML = rows.length > 0 ? rows.join('') : '<tr><td colspan="3" class="text-muted text-sm">尚無用戶</td></tr>';
@@ -2670,6 +2716,23 @@ async function saveCurriculum() {
     toast('課綱已儲存', 'success');
   } catch(e) {
     toast('儲存失敗：' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function toggleUserRole(uid, currentRole) {
+  if (!uid) return;
+  const newRole = currentRole === 'admin' ? 'user' : 'admin';
+  const action = newRole === 'admin' ? '設為管理員' : '降級為用戶';
+  if (!confirm(`確定將此用戶${action}？`)) return;
+  loading(true);
+  try {
+    await db.collection('profiles').doc(uid).update({ role: newRole });
+    toast(`已${action}`, 'success');
+    renderAdmin();
+  } catch(e) {
+    toast('操作失敗：' + e.message, 'error');
   } finally {
     loading(false);
   }
