@@ -809,12 +809,13 @@ async function loadProfile(uid) {
       state.profile = { id: uid, ...doc.data() };
     } else {
       // Create profile on first login
+      const isOwner = state.user.email === 'jacob.frog.jacob@gmail.com';
       const p = {
         email: state.user.email,
         nickname: state.user.displayName || state.user.email?.split('@')[0] || '用戶',
         fullName: state.user.displayName || '',
         avatarUrl: state.user.photoURL || '',
-        role: 'user',
+        role: isOwner ? 'admin' : 'user',
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       };
       await db.collection('profiles').doc(uid).set(p);
