@@ -831,14 +831,8 @@ auth.onAuthStateChanged(async (user) => {
   handleRoute();
 });
 
-// Handle redirect result (for desktop Google Sign-In)
-auth.getRedirectResult().catch(e => {
-  if (e.code === 'auth/unauthorized-domain') {
-    toast('🔒 此網域未授權，請在 Firebase 後台 Authentication > Settings 加入此網域', 'error');
-  } else if (e.code !== 'auth/popup-closed-by-user') {
-    console.error('Redirect sign-in error:', e);
-  }
-});
+// Handle redirect result (for desktop Google Sign-In, kept for compatibility)
+auth.getRedirectResult().catch(() => {});
 
 async function loadProfile(uid) {
   try {
