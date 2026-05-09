@@ -1,0 +1,13 @@
+{
+  "label": "115年 (2026) 最新課綱",
+  "grade": "國一",
+  "subjects": [
+    { "id": "chinese",    "label": "國語", "icon": "📖", "file": "data/chinese.json" },
+    { "id": "english",    "label": "英文", "icon": "🇬🇧", "file": "data/english.json" },
+    { "id": "math",       "label": "數學", "icon": "📐", "file": "data/math.json" },
+    { "id": "science",    "label": "生物", "icon": "🌿", "file": "data/science.json" },
+    { "id": "civics",     "label": "公民", "icon": "⚖️", "file": "data/civics.json" },
+    { "id": "history",    "label": "歷史", "icon": "📜", "file": "data/history.json" },
+    { "id": "geography",  "label": "地理", "icon": "🌍", "file": "data/geography.json" }
+  ]
+}
