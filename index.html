@@ -17,6 +17,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js">
 </script>
 
+<!-- ===== Supabase ===== -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+</script>
+
 <!-- ===== Markdown Parser ===== -->
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js">
 </script>
@@ -27,8 +31,25 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
 /* ============================================================
-   FONT: TaipeiSansTC via CDN + Fallback
+   FONT: TaipeiSansTC（多來源CDN + 在地備援）
    ============================================================ */
+@font-face {
+  font-family: 'TaipeiSansTC';
+  src:
+    url('https://cdn.jsdelivr.net/gh/taipei-font/taipei-font@master/TaipeiSansTC-Regular.woff2') format('woff2'),
+    url('https://raw.githubusercontent.com/taipei-font/taipei-font/master/TaipeiSansTC-Regular.woff2') format('woff2'),
+    url('https://fonts.gstatic.com/noto-sans-tc/main.woff2') format('woff2');
+  font-weight: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'TaipeiSansTC';
+  src:
+    url('https://cdn.jsdelivr.net/gh/taipei-font/taipei-font@master/TaipeiSansTC-Bold.woff2') format('woff2'),
+    url('https://raw.githubusercontent.com/taipei-font/taipei-font/master/TaipeiSansTC-Bold.woff2') format('woff2');
+  font-weight: bold;
+  font-display: swap;
+}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; scroll-behavior: smooth; }
@@ -614,24 +635,6 @@ const firebaseConfig = {
 };
 
 /* ============================================================
-   🤖 GEMINI API KEYS（多組自動輪詢）
-   ============================================================ */
-const GEMINI_API_KEYS = [
-  "AIzaSyBjCOqCmAm-L25tlv8NS_qZbPL3uEjGtUg",
-  "AIzaSyAwJpaE2ENiECXYBSTDvh5mKZMmbU05i8o",
-  "AIzaSyDu-lUoGJp-I3K5lhcdDmLK_6n6AGor9jw",
-  "AIzaSyCMOLeipsiy9RA4GQvARcSC26SB62sGTqM",
-  "AIzaSyD00LHoj6w7JkM6cvIqpFptQy0IFMALxf8"
-];
-let _currentKeyIdx = 0;
-
-function getGeminiKey() {
-  const key = GEMINI_API_KEYS[_currentKeyIdx % GEMINI_API_KEYS.length];
-  _currentKeyIdx++;
-  return key;
-}
-
-/* ============================================================
    APP STATE
    ============================================================ */
 const state = {
@@ -681,7 +684,10 @@ function formatDate(d) {
 
 function shuffle(arr) { const a = [...arr]; for (let i = a.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
 
-function accuracy(correct, total) { return total === 0 ? 0 : Math.round(correct/total*100); }
+function formatScore(n) {
+  if (n >= 1000) return (n/1000).toFixed(n%1000===0?0:1) + 'k';
+  return String(n);
+}
 
 /* ============================================================
    ROUTER
@@ -830,21 +836,142 @@ function renderHome() {
 }
 
 /* ============================================================
-   QUIZ — GEMINI API
+   🤖 MULTI-MODEL AI ENGINE（Gemini + DeepSeek + Groq）
    ============================================================ */
-const QUIZ_SYSTEM_PROMPT = `你是一個專業的AI出題系統。根據使用者提供的知識點或教材內容生成測驗題目。
 
-嚴格規則：
-1. 一律以 JSON 格式輸出，格式: { "questions": [ { "type": "multiple-choice|fill-in-blank|true-false|short-answer", "content": "題目", "options": ["A","B","C","D"], "correctAnswer": "正確答案", "explanation": "解析", "knowledgeTags": ["#tag1","#tag2"], "difficulty": "easy|medium|hard" } ] }
-2. 選擇題約40%、填充25%、是非20%、簡答15%
-3. 數學公式以 $...$ 標記 LaTeX
-4. 每個題目至少一個知識點標籤
-5. 難易度合理分布
-6. 對相同知識點改變數值/人物/情境（變形題）
-7. 直接輸出 JSON，不要 Markdown 程式碼區塊`;
+// ===== API Key Pools =====
+const KEY_POOLS = {
+  gemini: [
+    "AIzaSyBjCOqCmAm-L25tlv8NS_qZbPL3uEjGtUg",
+    "AIzaSyAwJpaE2ENiECXYBSTDvh5mKZMmbU05i8o",
+    "AIzaSyDu-lUoGJp-I3K5lhcdDmLK_6n6AGor9jw",
+    "AIzaSyCMOLeipsiy9RA4GQvARcSC26SB62sGTqM",
+    "AIzaSyD00LHoj6w7JkM6cvIqpFptQy0IFMALxf8"
+  ],
+  deepseek: [], // 停用，改用 OpenRouter
+  groq: [
+    "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"
+  ],
+  openrouter: [
+    "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"
+  ]
+};
 
-async function callGemini(prompt) {
-  const key = getGeminiKey();
+// ===== Key Health Tracking =====
+let keyHealth = {};
+Object.entries(KEY_POOLS).forEach(([model, keys]) => {
+  keys.forEach((k, i) => {
+    keyHealth[model + '_' + i] = { key: k, status: 'healthy', cooldownUntil: 0, lastUsed: 0 };
+  });
+});
+let _keyIdx = { gemini: 0, deepseek: 0, groq: 0, openrouter: 0 };
+
+// ===== Rate Limiter =====
+let _requestLog = [];
+const RPM_LIMIT = { groq: 30, openrouter: 10, gemini: 10, deepseek: 0 };
+const MIN_INTERVAL = 2000; // 2s mandatory delay
+
+async function rateLimit(model) {
+  const now = Date.now();
+  // Clean old entries (older than 60s)
+  _requestLog = _requestLog.filter(t => now - t < 60000);
+  // Check RPM
+  const rpm = RPM_LIMIT[model] || 15;
+  const recentCount = _requestLog.filter(t => t.model === model).length;
+  if (recentCount >= rpm) {
+    const wait = 60000 - (now - _requestLog.filter(t => t.model === model).sort((a,b)=>b-a)[0]);
+    throw { code: 'RATE_LIMITED', wait, message: `AI 冷卻排隊中，請等待 ${Math.ceil(wait/1000)} 秒...` };
+  }
+  // Enforce min interval
+  const lastReq = _requestLog.filter(t => t.model === model).sort((a,b)=>b-a)[0];
+  if (lastReq && now - lastReq < MIN_INTERVAL) {
+    await delay(MIN_INTERVAL - (now - lastReq));
+  }
+  _requestLog.push({ time: now, model });
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ===== AI Call Router =====
+async function callAI(prompt, sourceType) {
+  if (sourceType === 'image') return await callGeminiVision(prompt);
+
+  let lastErr;
+  const textChain = ['groq', 'openrouter'];
+  for (const model of textChain) {
+    while (_keyIdx[model] < KEY_POOLS[model].length) {
+      const idx = _keyIdx[model];
+      const healthKey = model + '_' + idx;
+      const health = keyHealth[healthKey];
+      if (!health || !health.key) { _keyIdx[model]++; continue; }
+      if (health.status === 'cooldown' && Date.now() < health.cooldownUntil) { _keyIdx[model]++; continue; }
+
+      try {
+        await rateLimit(model);
+        let result;
+        if (model === 'groq') result = await callGroq(prompt, idx);
+        else result = await callOpenRouter(prompt, idx);
+        health.status = 'healthy';
+        health.lastUsed = Date.now();
+        return result;
+      } catch (e) {
+        const cooldownSecs = model === 'groq' ? 60 : 30;
+        if (e.status === 429 || e.message?.includes('429') || e.message?.includes('timeout') || e.message?.includes('超時')) {
+          health.status = 'cooldown';
+          health.cooldownUntil = Date.now() + (cooldownSecs * 1000);
+          _keyIdx[model]++;
+          lastErr = e;
+          continue;
+        }
+        lastErr = e;
+        _keyIdx[model]++;
+      }
+    }
+    _keyIdx[model] = 0;
+  }
+  throw { code: 'ALL_EXHAUSTED', message: '所有 AI 模型均無法使用', retryAfter: 3 };
+}
+
+// ===== Fast Grading (Groq優先) =====
+async function callAIFast(prompt) {
+  let lastErr;
+  const fastChain = ['groq', 'openrouter'];
+  for (const model of fastChain) {
+    while (_keyIdx[model] < KEY_POOLS[model].length) {
+      const idx = _keyIdx[model];
+      const healthKey = model + '_' + idx;
+      const health = keyHealth[healthKey];
+      if (!health || !health.key) { _keyIdx[model]++; continue; }
+      if (health.status === 'cooldown' && Date.now() < health.cooldownUntil) { _keyIdx[model]++; continue; }
+      try {
+        await rateLimit(model);
+        let result;
+        if (model === 'groq') result = await callGroq(prompt, idx);
+        else result = await callOpenRouter(prompt, idx);
+        health.status = 'healthy';
+        health.lastUsed = Date.now();
+        return result;
+      } catch (e) {
+        if (e.status === 429 || e.message?.includes('429')) {
+          health.status = 'cooldown';
+          health.cooldownUntil = Date.now() + 30000;
+          _keyIdx[model]++;
+          lastErr = e;
+          continue;
+        }
+        lastErr = e;
+        _keyIdx[model]++;
+      }
+    }
+    _keyIdx[model] = 0;
+  }
+  throw lastErr || new Error('快速批改服務不可用');
+}
+
+// ===== Gemini API =====
+async function callGemini(prompt, keyIdx) {
+  const key = KEY_POOLS.gemini[keyIdx];
+  if (!key) throw new Error('No Gemini key available');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
   const res = await fetch(url, {
     method: 'POST',
@@ -854,25 +981,154 @@ async function callGemini(prompt) {
       generationConfig: { temperature: 0.9, maxOutputTokens: 8192 }
     })
   });
-  if (res.status === 429) {
-    // Try next key on next call
-    const msg = await res.json();
-    const detail = msg.error?.details?.[2]?.violations?.[0]?.quotaMetric || '';
-    if (detail.includes('PerDay') || detail.includes('PerMinute')) {
-      throw new Error(`Gemini API 配額已用完（所有 Key 均達上限）。請到 https://aistudio.google.com/apikey 建立新的 Key，或啟用付費方案。`);
-    }
-    throw new Error('Gemini API 暫時限流，請稍後重試。');
-  }
-  if (!res.ok) { const err = await res.text(); throw new Error('API錯誤: ' + err); }
+  if (res.status === 429) throw { status: 429, message: 'Gemini quota exceeded' };
+  if (!res.ok) throw new Error('Gemini error: ' + res.status);
   const data = await res.json();
   let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
   return JSON.parse(text);
 }
 
-async function generateQuizFromGemini(topic, sourceContent) {
-  const prompt = `${QUIZ_SYSTEM_PROMPT}\n\n主題：${topic || '一般知識'}\n題數：12\n${sourceContent ? `\n教材內容：\n${sourceContent}\n` : ''}\n生成 JSON：`;
-  return await callGemini(prompt);
+async function callGeminiVision(prompt) {
+  // Use first healthy key
+  for (let i = 0; i < KEY_POOLS.gemini.length; i++) {
+    const health = keyHealth['gemini_' + i];
+    if (!health || !health.key || health.status === 'cooldown') continue;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${health.key}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
+        })
+      });
+      if (res.status === 429) { health.status = 'cooldown'; health.cooldownUntil = Date.now() + 30000; continue; }
+      if (!res.ok) continue;
+      const data = await res.json();
+      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      return JSON.parse(text);
+    } catch (e) { continue; }
+  }
+  // Fallback to regular flash
+  return await callAI(prompt + '\n(請根據圖片內容出題)', null);
+}
+
+// ===== DeepSeek API =====
+async function callDeepSeek(prompt, keyIdx) {
+  const key = KEY_POOLS.deepseek[keyIdx];
+  if (!key) throw new Error('No DeepSeek key');
+  const url = 'https://api.deepseek.com/v1/chat/completions';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.9,
+      max_tokens: 8192
+    })
+  });
+  if (res.status === 429) throw { status: 429, message: 'DeepSeek quota exceeded' };
+  if (!res.ok) throw new Error('DeepSeek error: ' + res.status);
+  const data = await res.json();
+  let text = data.choices?.[0]?.message?.content || '';
+  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  return JSON.parse(text);
+}
+
+// ===== Groq API =====
+async function callGroq(prompt, keyIdx) {
+  const key = KEY_POOLS.groq[keyIdx];
+  if (!key) throw new Error('No Groq key');
+  const url = 'https://api.groq.com/openai/v1/chat/completions';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.9,
+      max_tokens: 8192
+    })
+  });
+  if (res.status === 429) throw { status: 429, message: 'Groq quota exceeded' };
+  if (!res.ok) throw new Error('Groq error: ' + res.status);
+  const data = await res.json();
+  let text = data.choices?.[0]?.message?.content || '';
+  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  return JSON.parse(text);
+}
+
+// ===== OpenRouter API =====
+async function callOpenRouter(prompt, keyIdx) {
+  const key = KEY_POOLS.openrouter[keyIdx];
+  if (!key) throw new Error('No OpenRouter key');
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'HTTP-Referer': window.location.origin, 'X-Title': 'AIQuiz' },
+    body: JSON.stringify({
+      model: 'deepseek/deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.9,
+      max_tokens: 8192
+    })
+  });
+  if (res.status === 429) throw { status: 429, message: 'OpenRouter quota exceeded' };
+  if (!res.ok) throw new Error('OpenRouter error: ' + res.status);
+  const data = await res.json();
+  let text = data.choices?.[0]?.message?.content || '';
+  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  return JSON.parse(text);
+}
+
+// ===== Quiz Generation Prompt =====
+const QUIZ_SYSTEM_PROMPT = `你是一個專業的AI出題系統。根據使用者提供的知識點或教材內容生成測驗題目。
+
+嚴格規則：
+1. 一律以 JSON 格式輸出，格式: { "questions": [ { "type": "multiple-choice|fill-in-blank|true-false|short-answer", "content": "題目", "options": ["A","B","C","D"], "correctAnswer": "正確答案", "explanation": "解析", "knowledgeTags": ["#tag1","#tag2"], "difficulty": "easy|medium|hard" } ] }
+2. 選擇題約40%、填充25%、是非20%、簡答15%
+3. 數學公式以 $...$ 標記 LaTeX
+4. 每個題目至少一個知識點標籤
+5. 難易度合理分布
+6. 對相同知識點，每次必須改變數值、人物名稱與情境設定（無限變形題）
+7. 直接輸出 JSON，不要 Markdown 程式碼區塊`;
+
+async function generateQuizFromAI(topic, sourceContent, sourceType) {
+  const prompt = `${QUIZ_SYSTEM_PROMPT}\n\n主題：${topic || '一般知識'}\n題數：12\n${sourceContent ? `\n教材內容：\n${sourceContent}\n` : ''}\n請務必變形出題（改變數字、人名、情境），生成 JSON：`;
+  return await callAI(prompt, sourceType);
+}
+
+// ===== Error Analysis =====
+const ERROR_ANALYSIS_PROMPT = `你是AI學習分析師。根據以下答題紀錄，分析錯誤原因並分類。
+
+輸出 JSON 格式：
+{
+  "summary": "一句話總結",
+  "errorAnalysis": [
+    { "questionId": "題號", "errorType": "concept|calculation|formula|careless", "errorReason": "錯誤原因說明", "suggestion": "改善建議" }
+  ],
+  "weakTags": ["#弱項知識點1"],
+  "studyPlan": "學習建議（Markdown格式）"
+}
+
+答題紀錄：`;
+
+async function analyzeErrors(answers) {
+  const prompt = ERROR_ANALYSIS_PROMPT + JSON.stringify(answers.map(a => ({
+    questionId: a.questionId,
+    userAnswer: a.userAnswer,
+    correctAnswer: a.correctAnswer,
+    isCorrect: a.isCorrect,
+    knowledgeTags: a.knowledgeTags
+  })));
+  try {
+    return await callAIFast(prompt);
+  } catch (e) {
+    return { summary: '分析失敗', errorAnalysis: [], weakTags: [], studyPlan: '請稍後再試' };
+  }
 }
 
 /* ============================================================
@@ -960,7 +1216,7 @@ async function startQuiz() {
 
   loading(true);
   try {
-    const result = await generateQuizFromGemini(finalTopic, content);
+    const result = await generateQuizFromAI(finalTopic, content, _sourceMode);
     if (!result.questions || result.questions.length === 0) throw new Error('沒有生成題目');
 
     const questions = shuffle(result.questions).map(q => ({ ...q, id: uid() }));
@@ -978,7 +1234,40 @@ async function startQuiz() {
     toast(`已生成 ${questions.length} 題`, 'success');
   } catch(e) {
     console.error(e);
-    toast('題目生成失敗：' + e.message, 'error');
+    const msg = e.message || '生成失敗';
+    if (e.code === 'ALL_EXHAUSTED' || msg.includes('所有')) {
+      const coolingEl = $('quizLoading') || $('startQuizBtn');
+      if (coolingEl) {
+        coolingEl.insertAdjacentHTML('afterend',
+          `<div class="card" style="margin-top:12px;text-align:center;padding:24px;background:var(--warning-light);border:2px solid #FCD34D" id="retryCard">
+            <div style="font-size:2rem;margin-bottom:8px">🧠</div>
+            <div style="font-size:1rem;font-weight:600">AI 正在深思中，請稍候 3 秒</div>
+            <div class="text-xs text-muted mt-2">系統將自動重試...</div>
+            <div class="spinner" style="margin-top:12px;width:20px;height:20px"></div>
+          </div>`
+        );
+      }
+      setTimeout(() => {
+        const card = $('retryCard');
+        if (card) card.remove();
+        startQuiz();
+      }, 3000);
+    } else if (msg.includes('冷卻')) {
+      toast('🔄 ' + msg, 'info');
+      const coolingEl = $('quizLoading') || $('startQuizBtn');
+      if (coolingEl) {
+        coolingEl.insertAdjacentHTML('afterend',
+          `<div class="card" style="margin-top:12px;text-align:center;padding:20px;background:var(--warning-light);border:1px solid #FCD34D">
+            <div style="font-size:1.5rem;margin-bottom:8px">⏳</div>
+            <div style="font-size:.875rem;font-weight:600">AI 冷卻排隊中</div>
+            <div class="text-xs text-muted mt-2">所有 API Key 暫時限流，請等待 30 秒後再試</div>
+            <button class="btn btn-primary btn-sm mt-2" onclick="startQuiz()">重試</button>
+          </div>`
+        );
+      }
+    } else {
+      toast('題目生成失敗：' + msg, 'error');
+    }
   } finally {
     loading(false);
   }
@@ -1451,7 +1740,7 @@ ${wrong.slice(0,10).map(a => `- 題目ID:${a.questionId}，你的答案:${a.user
 
 請輸出純JSON（不要Markdown標記）：`;
 
-    const noteResult = await callGemini(prompt);
+    const noteResult = await callAIFast(prompt);
     const note = {
       userId: state.user.uid,
       title: noteResult.title || '學習筆記',
@@ -1552,7 +1841,7 @@ async function loadLeaderboard(type) {
               ${type === 'diligence' ? `${e.quizzes} 次練習` : type === 'strength' ? `${e.quizzes} 次 · ${e.accuracy}% 正確率` : `${e.accuracy}% 正確率`}
             </div>
           </div>
-          <div style="font-weight:700;color:var(--primary)">${type === 'diligence' ? e.quizzes*10 + e.correct*5 : e.accuracy}${type === 'diligence' ? ' pts' : '%'}</div>
+          <div style="font-weight:700;color:var(--primary)">${type === 'diligence' ? formatScore(e.quizzes*10 + e.correct*5) : e.accuracy}${type === 'diligence' ? '' : '%'}</div>
         </div>
       </div>
     `).join('');
@@ -1600,12 +1889,21 @@ async function renderAdmin() {
 
     el.innerHTML = `
       <div class="admin-section">
-        <h2>🔑 Gemini API Key 管理</h2>
+        <h2>🔑 API Key 資源池</h2>
         <div class="card">
+          <div style="margin-bottom:12px">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+              <span class="tag tag-green">Gemini ${KEY_POOLS.gemini.length} 組</span>
+              <span class="tag tag-blue">OpenRouter ${KEY_POOLS.openrouter.length} 組</span>
+              <span class="tag tag-yellow">Groq ${KEY_POOLS.groq.length} 組</span>
+            </div>
+            <div id="keyHealthDisplay"></div>
+          </div>
           <div id="apiKeysList">
             ${(config.geminiKeys||['']).map((k,i) => `
               <div style="display:flex;gap:8px;margin-bottom:8px">
                 <input class="api-key-input" value="${k}" placeholder="API Key ${i+1}" onchange="updateKey(${i},this.value)">
+                <span class="tag ${getKeyHealth(i) === 'healthy' ? 'tag-green' : 'tag-red'} tag-sm" id="keyStatus_${i}">${getKeyHealth(i)}</span>
                 <button class="btn btn-ghost btn-sm" onclick="removeKey(${i})" style="color:var(--danger)">✕</button>
               </div>
             `).join('')}
@@ -1716,6 +2014,21 @@ async function saveAdminConfig() {
   } finally {
     loading(false);
   }
+}
+
+/* ============================================================
+   SUPABASE INIT
+   ============================================================ */
+const SUPABASE_URL = 'https://dsulwfmeujpoqrxeyvko.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzdWx3Zm1ldWpwb3FyeGV5dmtvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2MTY5ODUsImV4cCI6MjA2MjE5Mjk4NX0.seAkVIHfroE8LE_hjP9RAg_jnsUw1kQ';
+let supabase = null;
+try { supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e) { console.log('Supabase not available'); }
+
+function getKeyHealth(idx) {
+  const h = keyHealth['gemini_' + idx];
+  if (!h) return 'unknown';
+  if (h.status === 'cooldown') return '冷卻中';
+  return 'healthy';
 }
 
 /* ============================================================
