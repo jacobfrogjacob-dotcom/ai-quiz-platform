@@ -1370,13 +1370,14 @@ function renderQuiz() {
   ).join('') : '';
 
   const selUnit = selSubject ? selSubject.units.find(u => u.id === _selectedUnit) : null;
-  const subUnitBtns = selUnit ? selUnit.subUnits.map(su =>
-    `<label style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:var(--gray-50);border-radius:8px;cursor:pointer;font-size:.8125rem">
-      <input type="checkbox" value="${su}" onchange="toggleSubUnit(this)"> ${su}
-    </label>`
-  ).join('') : '';
-
   const selSubUnits = state._selectedSubUnits || [];
+  const subUnitBtns = selUnit ? selUnit.subUnits.map(su => {
+    const checked = selSubUnits.includes(su);
+    return `<div onclick="toggleSubUnit('${su.replace(/'/g, "\\'")}')" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:${checked ? 'var(--primary-light)' : 'var(--gray-50)'};border-radius:8px;cursor:pointer;font-size:.8125rem;border:1px solid ${checked ? 'var(--primary)' : 'var(--gray-200)'};transition:all .15s;user-select:none">
+      <span style="width:18px;height:18px;border-radius:4px;border:2px solid ${checked ? 'var(--primary)' : 'var(--gray-300)'};display:flex;align-items:center;justify-content:center;background:${checked ? 'var(--primary)' : 'transparent'};color:#fff;font-size:11px;font-weight:700;transition:all .15s">${checked ? '✓' : ''}</span>
+      ${su}
+    </div>`;
+  }).join('') : '';
 
   el.innerHTML = `
     <div class="card" style="margin-bottom:16px;background:var(--primary);text-align:center;padding:12px 20px">
@@ -1399,7 +1400,7 @@ function renderQuiz() {
 
       ${selUnit ? `
       <div class="mb-4">
-        <label class="input-label" style="font-size:.875rem;margin-bottom:8px">🔖 幾之幾（可複選）</label>
+        <label class="input-label" style="font-size:.875rem;margin-bottom:8px">📖 章節</label>
         <div style="display:flex;flex-wrap:wrap;gap:6px">${subUnitBtns}</div>
         ${selSubUnits.length > 0 ? `<div class="text-xs text-muted mt-2">已選：${selSubUnits.join('、')}</div>` : ''}
       </div>` : ''}
@@ -1448,12 +1449,13 @@ function selectUnit(id) {
   renderQuiz();
 }
 
-function toggleSubUnit(el) {
+function toggleSubUnit(val) {
   if (!state._selectedSubUnits) state._selectedSubUnits = [];
-  if (el.checked) {
-    state._selectedSubUnits.push(el.value);
+  const idx = state._selectedSubUnits.indexOf(val);
+  if (idx === -1) {
+    state._selectedSubUnits.push(val);
   } else {
-    state._selectedSubUnits = state._selectedSubUnits.filter(s => s !== el.value);
+    state._selectedSubUnits.splice(idx, 1);
   }
   renderQuiz();
 }
@@ -1507,7 +1509,7 @@ async function startQuiz() {
     state.quizAnswers = {};
     state.currentQIdx = 0;
     state.quizMode = 'taking';
-    state._lastTopic = finalTopic;
+    state._lastTopic = fullTopic;
     renderQuizTaking();
     startTimer();
     toast(`已生成 ${questions.length} 題`, 'success');
