@@ -835,15 +835,8 @@ auth.onAuthStateChanged(async (user) => {
   handleRoute();
 });
 
-// Handle redirect result (for Google Sign-In)
-auth.getRedirectResult().then(r => {
-  if (r.user) toast('登入成功！', 'success');
-}).catch(e => {
-  if (e.code === 'auth/unauthorized-domain') {
-    toast('🔒 此網域未授權，請在 Firebase 後台加入此網域', 'error');
-  }
-  console.error('Redirect sign-in error:', e);
-});
+// Handle redirect result (kept for compatibility)
+auth.getRedirectResult().catch(() => {});
 
 async function loadProfile(uid) {
   try {
@@ -880,8 +873,18 @@ async function updateProfile(data) {
 
 function signInWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  toast('正在導向 Google 登入...', 'info');
-  auth.signInWithRedirect(provider);
+  toast('正在開啟登入視窗...', 'info');
+  auth.signInWithPopup(provider).then(() => {
+    toast('登入成功！', 'success');
+  }).catch(e => {
+    if (e.code === 'auth/popup-blocked') {
+      toast('⚠️ 瀏覽器阻擋了彈出視窗，請允許此網站彈出視窗後重試', 'error');
+    } else if (e.code === 'auth/popup-closed-by-user') {
+      toast('已取消登入', 'info');
+    } else {
+      toast('登入失敗：' + e.message, 'error');
+    }
+  });
 }
 
 function signOut() {
