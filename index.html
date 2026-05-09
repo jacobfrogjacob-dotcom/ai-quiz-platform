@@ -17,10 +17,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js">
 </script>
 
-<!-- ===== Supabase ===== -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-</script>
-
 <!-- ===== Markdown Parser ===== -->
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js">
 </script>
@@ -1972,6 +1968,13 @@ async function renderAdmin() {
   }
 }
 
+function getKeyHealth(idx) {
+  const h = keyHealth['gemini_' + idx];
+  if (!h) return 'unknown';
+  if (h.status === 'cooldown') return '冷卻中';
+  return 'healthy';
+}
+
 function addKey() {
   const keys = [...(state.adminData?.geminiKeys || []), ''];
   state.adminData.geminiKeys = keys;
@@ -2014,21 +2017,6 @@ async function saveAdminConfig() {
   } finally {
     loading(false);
   }
-}
-
-/* ============================================================
-   SUPABASE INIT
-   ============================================================ */
-const SUPABASE_URL = 'https://dsulwfmeujpoqrxeyvko.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzdWx3Zm1ldWpwb3FyeGV5dmtvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2MTY5ODUsImV4cCI6MjA2MjE5Mjk4NX0.seAkVIHfroE8LE_hjP9RAg_jnsUw1kQ';
-let supabase = null;
-try { supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e) { console.log('Supabase not available'); }
-
-function getKeyHealth(idx) {
-  const h = keyHealth['gemini_' + idx];
-  if (!h) return 'unknown';
-  if (h.status === 'cooldown') return '冷卻中';
-  return 'healthy';
 }
 
 /* ============================================================
