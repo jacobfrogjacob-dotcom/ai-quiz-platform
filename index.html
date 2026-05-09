@@ -595,6 +595,17 @@ th { color: var(--gray-500); font-weight: 500; font-size: .75rem; text-transform
     </div>
   </div>
 
+  <!-- ===== DIAGNOSIS PAGE ===== -->
+  <div class="page" id="page-diagnosis">
+    <h1 style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/><circle cx="12" cy="12" r="10"/></svg>
+      智慧診斷
+    </h1>
+    <div id="diagnosisContent">
+      <div class="loading-overlay"><div class="spinner"></div><div>分析學習數據中...</div></div>
+    </div>
+  </div>
+
   <!-- ===== NOTES PAGE ===== -->
   <div class="page" id="page-notes">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -674,6 +685,8 @@ const state = {
   quizMode: 'idle', // idle | taking | reviewing
   dashboardChart: null,
   radarChart: null,
+  diagnosisRadarChart: null,
+  diagnosisBarChart: null,
   adminData: null,
   timerMinutes: 10,
   timerRemaining: 0,
@@ -763,6 +776,7 @@ function handleRoute() {
     case 'home': renderHome(); break;
     case 'quiz': renderQuiz(); break;
     case 'dashboard': renderDashboard(); break;
+    case 'diagnosis': renderDiagnosis(); break;
     case 'notes': renderNotes(); break;
     case 'leaderboard': renderLeaderboard(); break;
     case 'admin': renderAdmin(); break;
@@ -855,6 +869,7 @@ function updateNav() {
     links.push(
       { page: 'quiz', label: '練習', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' },
       { page: 'dashboard', label: '儀表板', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>' },
+      { page: 'diagnosis', label: '診斷', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>' },
       { page: 'notes', label: '筆記', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' },
       { page: 'leaderboard', label: '排行', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 6 9 6 9z"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 18 9 18 9z"/><path d="M4 22h16"/><path d="M10 22V8h4v14"/></svg>' }
     );
@@ -1243,100 +1258,26 @@ async function toggleBookmark(qid, content, answer, tagsStr) {
 }
 
 /* ============================================================
-   115年課綱資料（國一）
+   115年課綱資料（動態載入 data/manifest.json）
    ============================================================ */
-const CURRICULUM = {
-  label: '115年 (2026) 最新課綱',
-  subjects: [
-    {
-      id: 'chinese', label: '國文', icon: '📖',
-      units: [
-        { id: 'L1', label: '第一課 夏夜', subUnits: ['1-1 課文賞析', '1-2 注釋與語詞', '1-3 修辭技巧'] },
-        { id: 'L2', label: '第二課 傘', subUnits: ['2-1 課文賞析', '2-2 注釋與語詞', '2-3 修辭技巧'] },
-        { id: 'L3', label: '第三課 善用時間的方法', subUnits: ['3-1 課文賞析', '3-2 論說文結構'] },
-        { id: 'L4', label: '第四課 差不多先生傳', subUnits: ['4-1 課文賞析', '4-2 諷刺文學'] },
-        { id: 'L5', label: '第五課 論語選', subUnits: ['5-1 論語賞析', '5-2 儒家思想'] },
-        { id: 'L6', label: '第六課 紙船印象', subUnits: ['6-1 課文賞析', '6-2 記敘文寫作'] },
-        { id: 'L7', label: '第七課 兒時記趣', subUnits: ['7-1 課文賞析', '7-2 文言文理解'] },
-        { id: 'L8', label: '第八課 律詩選', subUnits: ['8-1 詩詞賞析', '8-2 格律與押韻'] },
-        { id: 'L9', label: '第九課 智救養馬人', subUnits: ['9-1 課文賞析', '9-2 對話與情理'] },
-        { id: 'L10', label: '第十課 田園之秋選', subUnits: ['10-1 課文賞析', '10-2 自然描寫'] },
-        { id: 'grammar1', label: '語文常識 標點符號', subUnits: ['運用', '辨析'] },
-        { id: 'grammar2', label: '語文常識 漢字結構', subUnits: ['六書', '部首'] }
-      ]
-    },
-    {
-      id: 'english', label: '英文', icon: '🇬🇧',
-      units: [
-        { id: 'L1', label: 'Lesson 1 Hello', subUnits: ['1-1 字母與發音', '1-2 自我介紹', '1-3 句型Be動詞'] },
-        { id: 'L2', label: 'Lesson 2 My Family', subUnits: ['2-1 家庭稱謂', '2-2 所有格', '2-3 疑問句'] },
-        { id: 'L3', label: 'Lesson 3 School Life', subUnits: ['3-1 教室用語', '3-2 現在簡單式', '3-3 第三人稱'] },
-        { id: 'L4', label: 'Lesson 4 My Favorite Things', subUnits: ['4-1 顏色/物品', '4-2 疑問詞What', '4-3 形容詞'] },
-        { id: 'L5', label: 'Lesson 5 Daily Routines', subUnits: ['5-1 日常動詞', '5-2 時間表達', '5-3 頻率副詞'] },
-        { id: 'L6', label: 'Lesson 6 Seasons and Weather', subUnits: ['6-1 天氣詞彙', '6-2 現在進行式', '6-3 感嘆句'] },
-        { id: 'R1', label: 'Review 1 (L1-L3)', subUnits: ['總複習'] },
-        { id: 'R2', label: 'Review 2 (L4-L6)', subUnits: ['總複習'] }
-      ]
-    },
-    {
-      id: 'math', label: '數學', icon: '📐',
-      units: [
-        { id: 'C1', label: '第1章 整數的運算', subUnits: ['1-1 整數與數線', '1-2 整數的加減', '1-3 整數的乘除', '1-4 指數律'] },
-        { id: 'C2', label: '第2章 因數與倍數', subUnits: ['2-1 因數與倍數', '2-2 質因數分解', '2-3 最大公因數', '2-4 最小公倍數'] },
-        { id: 'C3', label: '第3章 分數的運算', subUnits: ['3-1 約分與擴分', '3-2 分數的加減', '3-3 分數的乘除', '3-4 分數四則運算'] },
-        { id: 'C4', label: '第4章 一元一次方程式', subUnits: ['4-1 代數式化簡', '4-2 一元一次方程式', '4-3 應用問題'] },
-        { id: 'C5', label: '第5章 二元一次方程式', subUnits: ['5-1 二元一次方程式', '5-2 代入消去法', '5-3 加減消去法', '5-4 應用問題'] },
-        { id: 'C6', label: '第6章 直角坐標', subUnits: ['6-1 直角坐標平面', '6-2 二元一次方程式圖形'] },
-        { id: 'C7', label: '第7章 比例', subUnits: ['7-1 比與比值', '7-2 正比與反比'] },
-        { id: 'C8', label: '第8章 一元一次不等式', subUnits: ['8-1 不等式', '8-2 一元一次不等式'] }
-      ]
-    },
-    {
-      id: 'science', label: '自然', icon: '🔬',
-      units: [
-        { id: 'S1', label: '第1章 科學方法', subUnits: ['1-1 科學探究', '1-2 實驗與測量', '1-3 科學態度'] },
-        { id: 'S2', label: '第2章 物質基本性質', subUnits: ['2-1 物質三態', '2-2 水溶液', '2-3 空氣的組成'] },
-        { id: 'S3', label: '第3章 波動與聲音', subUnits: ['3-1 波的傳播', '3-2 聲音的產生', '3-3 噪音防治'] },
-        { id: 'S4', label: '第4章 光', subUnits: ['4-1 光的傳播', '4-2 反射與平面鏡', '4-3 折射與透鏡'] },
-        { id: 'S5', label: '第5章 溫度與熱', subUnits: ['5-1 溫度與溫度計', '5-2 熱量與比熱', '5-3 熱的傳播'] },
-        { id: 'S6', label: '第6章 物質的構造', subUnits: ['6-1 原子與分子', '6-2 原子結構', '6-3 元素與週期表'] }
-      ]
-    },
-    {
-      id: 'civics', label: '公民', icon: '⚖️',
-      units: [
-        { id: 'CIV1', label: '第1課 人性尊嚴', subUnits: ['1-1 人性尊嚴的意義', '1-2 尊重與包容'] },
-        { id: 'CIV2', label: '第2課 性別平等', subUnits: ['2-1 性別平等概念', '2-2 性別刻板印象'] },
-        { id: 'CIV3', label: '第3課 家庭生活', subUnits: ['3-1 家庭功能', '3-2 家人關係'] },
-        { id: 'CIV4', label: '第4課 校園生活', subUnits: ['4-1 校園權利與義務', '4-2 學生自治'] },
-        { id: 'CIV5', label: '第5課 社區生活', subUnits: ['5-1 社區參與', '5-2 社會團體'] },
-        { id: 'CIV6', label: '第6課 社會規範', subUnits: ['6-1 法律與道德', '6-2 社會秩序'] }
-      ]
-    },
-    {
-      id: 'history', label: '歷史', icon: '📜',
-      units: [
-        { id: 'H1', label: '第1課 史前臺灣', subUnits: ['1-1 史前文化', '1-2 考古遺址'] },
-        { id: 'H2', label: '第2課 原住民', subUnits: ['2-1 原住民族群', '2-2 原住民文化'] },
-        { id: 'H3', label: '第3課 大航海時代', subUnits: ['3-1 荷西時期', '3-2 國際競爭'] },
-        { id: 'H4', label: '第4課 清領前期', subUnits: ['4-1 渡臺禁令', '4-2 農業發展'] },
-        { id: 'H5', label: '第5課 清領後期', subUnits: ['5-1 開港通商', '5-2 現代化建設'] },
-        { id: 'H6', label: '第6課 日治時期', subUnits: ['6-1 殖民統治', '6-2 近代化發展'] }
-      ]
-    },
-    {
-      id: 'geography', label: '地理', icon: '🌍',
-      units: [
-        { id: 'G1', label: '第1課 位置與範圍', subUnits: ['1-1 絕對位置', '1-2 相對位置'] },
-        { id: 'G2', label: '第2課 地形', subUnits: ['2-1 地形類型', '2-2 臺灣地形特徵'] },
-        { id: 'G3', label: '第3課 氣候', subUnits: ['3-1 氣候要素', '3-2 臺灣氣候'] },
-        { id: 'G4', label: '第4課 水文', subUnits: ['4-1 水循環', '4-2 臺灣水資源'] },
-        { id: 'G5', label: '第5課 人口', subUnits: ['5-1 人口分布', '5-2 人口結構'] },
-        { id: 'G6', label: '第6課 產業', subUnits: ['6-1 第一級產業', '6-2 二三級產業'] }
-      ]
-    }
-  ]
-};
+let curriculumData = null;
+
+async function loadCurriculum() {
+  try {
+    const res = await fetch('data/manifest.json');
+    const manifest = await res.json();
+    const subjects = await Promise.all(manifest.subjects.map(async (s) => {
+      const subRes = await fetch(s.file);
+      const subData = await subRes.json();
+      return { id: s.id, label: s.label, icon: s.icon, units: subData.units };
+    }));
+    curriculumData = { label: manifest.label, subjects };
+  } catch (e) {
+    console.error('課綱載入失敗', e);
+    curriculumData = { label: '課綱載入失敗', subjects: [] };
+  }
+}
+const _curriculumLoadPromise = loadCurriculum();
 
 /* ============================================================
    QUIZ — UI
@@ -1348,14 +1289,18 @@ function renderQuiz() {
   const el = $('quizContent');
   if (state.quizMode === 'taking') { renderQuizTaking(); return; }
   if (state.quizMode === 'reviewing') { renderQuizReview(); return; }
+  if (!curriculumData) {
+    el.innerHTML = '<div class="card" style="text-align:center;padding:40px"><div class="spinner"></div><div class="mt-2">載入課綱資料中...</div></div>';
+    return;
+  }
 
-  const subjectBtns = CURRICULUM.subjects.map(s =>
+  const subjectBtns = curriculumData.subjects.map(s =>
     `<button class="source-tab ${_selectedSubject === s.id ? 'active' : ''}" onclick="selectSubject('${s.id}')" style="font-size:.9375rem;padding:10px 18px">
       ${s.icon} ${s.label}
     </button>`
   ).join('');
 
-  const selSubject = CURRICULUM.subjects.find(s => s.id === _selectedSubject);
+  const selSubject = curriculumData.subjects.find(s => s.id === _selectedSubject);
   const unitBtns = selSubject ? selSubject.units.map(u =>
     `<button class="tag ${_selectedUnit === u.id ? 'tag-green' : 'tag-blue'}" style="cursor:pointer;padding:8px 14px;font-size:.8125rem;border:none;font-family:var(--font)" onclick="selectUnit('${u.id}')">${u.label}</button>`
   ).join('') : '';
@@ -1372,7 +1317,7 @@ function renderQuiz() {
   el.innerHTML = `
     <div class="card" style="margin-bottom:16px;background:var(--primary);text-align:center;padding:12px 20px">
       <div style="font-size:1.1rem;font-weight:700;color:#fff">
-        🎯 ${CURRICULUM.label} · 國一
+        🎯 ${curriculumData.label} · 國一
       </div>
     </div>
 
@@ -1421,7 +1366,7 @@ function renderQuiz() {
       <div id="quizLoading" class="loading-overlay" style="display:none">
         <div class="spinner"></div>
         <div>AI 正在出題...</div>
-        <div class="text-xs text-muted">根據 ${CURRICULUM.label} 國一${selSubject ? ' · ' + selSubject.label : ''}${selUnit ? ' · ' + selUnit.label : ''} 生成題目中</div>
+        <div class="text-xs text-muted">根據 ${curriculumData.label} 國一${selSubject ? ' · ' + selSubject.label : ''}${selUnit ? ' · ' + selUnit.label : ''} 生成題目中</div>
       </div>
     </div>`;
 }
@@ -1460,8 +1405,9 @@ function pickTopic(topic) {
 async function startQuiz() {
   const customTopic = $('quizTopic')?.value.trim();
   if (!_selectedSubject) { toast('請先選擇科目', 'error'); return; }
+  if (!curriculumData) { toast('課綱資料尚未載入', 'error'); return; }
 
-  const selSubject = CURRICULUM.subjects.find(s => s.id === _selectedSubject);
+  const selSubject = curriculumData.subjects.find(s => s.id === _selectedSubject);
   const selUnit = selSubject ? selSubject.units.find(u => u.id === _selectedUnit) : null;
   const selSubUnits = state._selectedSubUnits || [];
 
@@ -1470,7 +1416,7 @@ async function startQuiz() {
   const subUnitStr = selSubUnits.length > 0 ? '（' + selSubUnits.join('、') + '）' : '';
 
   const fullTopic = [
-    CURRICULUM.label,
+    curriculumData.label,
     '國一',
     subjectLabel,
     unitLabel,
@@ -1919,6 +1865,231 @@ function renderCharts(progressData, radarData) {
 }
 
 /* ============================================================
+   DIAGNOSIS
+   ============================================================ */
+const SUBJECT_MAP = {
+  '國語': { id: 'chinese', label: '國語', short: '國', color: '#0B5EAC' },
+  '國文': { id: 'chinese', label: '國文', short: '國', color: '#0B5EAC' },
+  '英文': { id: 'english', label: '英文', short: '英', color: '#72A0CB' },
+  '數學': { id: 'math', label: '數學', short: '數', color: '#16A34A' },
+  '生物': { id: 'science', label: '生物', short: '自', color: '#D97706' },
+  '自然': { id: 'science', label: '自然', short: '自', color: '#D97706' },
+  '歷史': { id: 'history', label: '歷史', short: '社', color: '#DC2626' },
+  '地理': { id: 'geography', label: '地理', short: '社', color: '#8B5CF6' },
+  '公民': { id: 'civics', label: '公民', short: '社', color: '#EC4899' }
+};
+
+async function renderDiagnosis() {
+  const el = $('diagnosisContent');
+  if (!state.user) { el.innerHTML = '<div class="card text-center" style="padding:40px"><p class="text-muted">請先登入</p></div>'; return; }
+
+  el.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+
+  try {
+    const snap = await db.collection('quiz_answers')
+      .where('userId', '==', state.user.uid)
+      .limit(500)
+      .get();
+
+    const answers = [];
+    snap.forEach(d => answers.push(d.data()));
+    if (answers.length === 0) {
+      el.innerHTML = '<div class="card text-center" style="padding:40px"><div style="font-size:3rem;margin-bottom:12px">📊</div><h3>尚無答題紀錄</h3><p class="text-muted text-sm mt-2">完成練習後即可在此查看弱點分析</p></div>';
+      return;
+    }
+
+    const subjectStats = {};
+    const unitStats = {};
+    const wrongAnswers = [];
+
+    answers.forEach(a => {
+      const tags = a.knowledgeTags || [];
+      const isCorrect = a.isCorrect;
+      if (!isCorrect) wrongAnswers.push(a);
+
+      let subject = null;
+      let unit = null;
+      tags.forEach(t => {
+        const st = Object.values(SUBJECT_MAP).find(s => t.toLowerCase().includes(s.label.toLowerCase()) || t.toLowerCase().includes(s.short));
+        if (st && !subject) subject = st.id;
+        if (t.startsWith('#')) {
+          const clean = t.replace('#', '');
+          if (!SUBJECT_MAP[clean]) unit = clean;
+        }
+      });
+
+      if (!subject) {
+        if (tags.some(t => /國語|國文|chinese/i.test(t))) subject = 'chinese';
+        else if (tags.some(t => /英文|english/i.test(t))) subject = 'english';
+        else if (tags.some(t => /數學|math/i.test(t))) subject = 'math';
+        else if (tags.some(t => /生物|自然|science/i.test(t))) subject = 'science';
+        else if (tags.some(t => /歷史|地理|公民|history|geography|civics/i.test(t))) subject = 'social';
+      }
+
+      if (subject) {
+        if (!subjectStats[subject]) subjectStats[subject] = { correct: 0, total: 0 };
+        subjectStats[subject].total++;
+        if (isCorrect) subjectStats[subject].correct++;
+      }
+
+      if (unit) {
+        const key = subject + '_' + unit;
+        if (!unitStats[key]) unitStats[key] = { subject, unit, correct: 0, total: 0 };
+        unitStats[key].total++;
+        if (isCorrect) unitStats[key].correct++;
+      }
+    });
+
+    // Also try to get subject from sessions
+    const sessionsSnap = await db.collection('quiz_sessions')
+      .where('userId', '==', state.user.uid)
+      .limit(100)
+      .get();
+
+    sessionsSnap.forEach(d => {
+      const s = d.data();
+      const topic = s.topic || '';
+      Object.entries(SUBJECT_MAP).forEach(([name, info]) => {
+        if (topic.includes(name)) {
+          if (!subjectStats[info.id]) subjectStats[info.id] = { correct: 0, total: 0 };
+          subjectStats[info.id].total += s.totalQuestions || 0;
+          subjectStats[info.id].correct += s.score || 0;
+        }
+      });
+    });
+
+    const subjectLabels = { chinese: '國語', english: '英文', math: '數學', science: '生物', social: '社合' };
+    const subjectOrder = ['chinese', 'english', 'math', 'science', 'social'];
+    const radarData = subjectOrder.map(id => {
+      const st = subjectStats[id] || { correct: 0, total: 0 };
+      const acc = st.total > 0 ? Math.round(st.correct / st.total * 100) : 0;
+      return { subject: subjectLabels[id] || id, accuracy: acc };
+    });
+
+    const unitList = Object.entries(unitStats).map(([key, v]) => ({
+      key,
+      subject: v.subject,
+      unit: v.unit,
+      accuracy: v.total > 0 ? Math.round(v.correct / v.total * 100) : 0,
+      total: v.total
+    })).sort((a, b) => a.accuracy - b.accuracy);
+
+    el.innerHTML = `
+      <div class="grid grid-2" style="margin-bottom:20px">
+        <div class="card"><h3 style="font-size:.9375rem;margin-bottom:12px">🎯 五大領域雷達</h3><div class="chart-container" style="height:260px"><canvas id="diagnosisRadar"></canvas></div></div>
+        <div class="card"><h3 style="font-size:.9375rem;margin-bottom:12px">📊 各科正確率</h3><div class="chart-container" style="height:260px"><canvas id="diagnosisBar"></canvas></div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <h3 style="font-size:.9375rem;margin-bottom:12px">📖 章節診斷</h3>
+        ${unitList.length > 0 ? unitList.map(u => {
+          const level = u.accuracy >= 80 ? '精熟' : u.accuracy >= 50 ? '基礎' : '待加強';
+          const color = u.accuracy >= 80 ? 'var(--success)' : u.accuracy >= 50 ? 'var(--warning)' : 'var(--danger)';
+          const bg = u.accuracy >= 80 ? 'var(--success-light)' : u.accuracy >= 50 ? 'var(--warning-light)' : 'var(--danger-light)';
+          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--gray-50)">
+            <div style="flex:1;min-width:0">
+              <div class="text-sm" style="font-weight:500">${u.unit}</div>
+              <div class="text-xs text-muted">${u.total} 題</div>
+            </div>
+            <div style="width:60px;text-align:right;font-weight:700;color:${color}">${u.accuracy}%</div>
+            <span class="tag" style="background:${bg};color:${color}">${level}</span>
+            ${u.accuracy < 80 ? `<button class="btn btn-sm btn-outline" onclick="retryWeakUnit('${u.unit}')">再次挑戰</button>` : ''}
+          </div>`;
+        }).join('') : '<div class="text-sm text-muted text-center" style="padding:16px">尚無足夠數據</div>'}
+      </div>
+      <div class="card">
+        <h3 style="font-size:.9375rem;margin-bottom:12px">❌ 錯題追蹤（最近 ${Math.min(wrongAnswers.length, 20)} 筆）</h3>
+        ${wrongAnswers.length > 0 ? wrongAnswers.slice(0, 20).map(a =>
+          `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--gray-50)">
+            <div style="flex-shrink:0;width:20px;height:20px;border-radius:50%;background:var(--danger-light);display:flex;align-items:center;justify-content:center">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div class="text-sm">${(a.questionId || '').slice(0, 40)}${(a.questionId||'').length > 40 ? '...' : ''}</div>
+              <div class="text-xs text-muted">你的答案：${a.userAnswer || '無'} ｜ 正確：${a.correctAnswer || '無'}</div>
+            </div>
+          </div>`
+        ).join('') : '<div class="text-sm text-muted text-center" style="padding:16px">沒有錯題，太棒了！</div>'}
+      </div>`;
+
+    setTimeout(() => {
+      renderDiagnosisCharts(radarData);
+    }, 100);
+
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = `<div class="card text-center" style="padding:40px"><p class="text-muted">載入診斷失敗</p><p class="text-xs text-muted mt-2">${e.message}</p></div>`;
+  }
+}
+
+function renderDiagnosisCharts(radarData) {
+  const rCtx = document.getElementById('diagnosisRadar')?.getContext('2d');
+  if (rCtx && state.diagnosisRadarChart) { state.diagnosisRadarChart.destroy(); }
+  if (rCtx) {
+    state.diagnosisRadarChart = new Chart(rCtx, {
+      type: 'radar',
+      data: {
+        labels: radarData.map(d => d.subject),
+        datasets: [{
+          label: '正確率',
+          data: radarData.map(d => d.accuracy),
+          backgroundColor: 'rgba(11,94,172,.2)',
+          borderColor: '#0B5EAC',
+          pointBackgroundColor: '#0B5EAC',
+          pointBorderColor: '#fff',
+          pointRadius: 5
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { r: { min: 0, max: 100, ticks: { stepSize: 20, callback: v => v+'%' }, grid: { color: 'rgba(0,0,0,.08)' } } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  const bCtx = document.getElementById('diagnosisBar')?.getContext('2d');
+  if (bCtx && state.diagnosisBarChart) { state.diagnosisBarChart.destroy(); }
+  if (bCtx) {
+    const colors = radarData.map(d => {
+      if (d.accuracy >= 80) return '#16A34A';
+      if (d.accuracy >= 50) return '#D97706';
+      return '#DC2626';
+    });
+    state.diagnosisBarChart = new Chart(bCtx, {
+      type: 'bar',
+      data: {
+        labels: radarData.map(d => d.subject),
+        datasets: [{
+          label: '正確率',
+          data: radarData.map(d => d.accuracy),
+          backgroundColor: colors,
+          borderRadius: 6,
+          barThickness: 36
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { min: 0, max: 100, ticks: { callback: v => v+'%' }, grid: { color: 'rgba(0,0,0,.05)' } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  }
+}
+
+function retryWeakUnit(unitName) {
+  state._lastTopic = unitName;
+  navigate('quiz');
+  setTimeout(() => {
+    const input = $('quizTopic');
+    if (input) input.value = unitName;
+    toast(`正在為「${unitName}」生成複習題`, 'info');
+  }, 300);
+}
+
+/* ============================================================
    NOTES
    ============================================================ */
 async function renderNotes() {
@@ -2364,10 +2535,12 @@ async function saveProfile() {
 }
 
 /* ============================================================
-   INIT
+   INIT（等待課綱載入後啟動）
    ============================================================ */
-initDarkMode();
-handleRoute();
+_curriculumLoadPromise.then(() => {
+  initDarkMode();
+  handleRoute();
+});
 </script>
 </body>
 </html>
