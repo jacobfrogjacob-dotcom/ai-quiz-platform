@@ -805,11 +805,14 @@ auth.onAuthStateChanged(async (user) => {
 async function loadProfile(uid) {
   try {
     const doc = await db.collection('profiles').doc(uid).get();
+    const isOwner = state.user.email === 'jacob.frog.jacob@gmail.com';
     if (doc.exists) {
       state.profile = { id: uid, ...doc.data() };
+      if (isOwner && state.profile.role !== 'admin') {
+        state.profile.role = 'admin';
+        await db.collection('profiles').doc(uid).update({ role: 'admin' });
+      }
     } else {
-      // Create profile on first login
-      const isOwner = state.user.email === 'jacob.frog.jacob@gmail.com';
       const p = {
         email: state.user.email,
         nickname: state.user.displayName || state.user.email?.split('@')[0] || '用戶',
@@ -1666,19 +1669,10 @@ function answerQuestion(qid, answer) {
   state._answering = true;
   state.quizAnswers[qid] = answer;
   renderQuizTaking();
-  const delay = state.currentQIdx < state.quizSession.questions.length - 1 ? 1500 : 2000;
-  setTimeout(() => {
-    state._answering = false;
-    if (state.currentQIdx < state.quizSession.questions.length - 1) {
-      state.currentQIdx++;
-      renderQuizTaking();
-    } else {
-      finishQuiz();
-    }
-  }, delay);
 }
 
 function goToQuestion(idx) {
+  state._answering = false;
   if (idx >= 0 && idx < state.quizSession.questions.length) {
     state.currentQIdx = idx;
     renderQuizTaking();
@@ -1686,6 +1680,7 @@ function goToQuestion(idx) {
 }
 
 function nextQuestion() {
+  state._answering = false;
   if (state.currentQIdx < state.quizSession.questions.length - 1) {
     state.currentQIdx++;
     renderQuizTaking();
@@ -1693,6 +1688,7 @@ function nextQuestion() {
 }
 
 function prevQuestion() {
+  state._answering = false;
   if (state.currentQIdx > 0) {
     state.currentQIdx--;
     renderQuizTaking();
