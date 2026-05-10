@@ -1225,9 +1225,6 @@ async function generateQuizFromAI(topic, subjectId) {
     : `中文題目規則：
 - 使用繁體中文
 - 只出選擇題，4 個選項`;
-    : `中文題目規則：
-- 使用繁體中文
-- 只出選擇題，4 個選項`;
   const prompt = `${QUIZ_SYSTEM_PROMPT}\n${langRule}\n\n主題：${topic || '一般知識'}\n題數：10\n請務必根據「${topic}」範圍出題（改變數字、人名、情境），生成 JSON：`;
   return await callAI(prompt);
 }
