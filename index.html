@@ -904,20 +904,19 @@ async function updateProfile(data) {
 }
 
 async function signInWithGoogle() {
-  toast('正在導向 Google 登入...', 'info');
+  toast('正在登入...', 'info');
   try {
     await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-    await auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+    // Use popup first — works on mobile, file://, and avoids Chrome storage partitioning
+    const result = await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    if (result.user) toast('登入成功！', 'success');
   } catch (e) {
-    console.error('signInWithRedirect error:', e);
-    // Fallback: try popup on mobile if redirect fails
-    if (e.code === 'auth/operation-not-supported-in-this-environment' ||
-        e.message?.includes('indexedDB') || e.message?.includes('storage')) {
+    console.warn('Popup login failed:', e.code);
+    // Fallback: redirect (for environments where popup is blocked)
+    if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+      toast('彈出視窗被阻擋，嘗試重新導向登入...', 'info');
       try {
-        toast('嘗試彈出視窗登入...', 'info');
-        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        const result = await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-        if (result.user) toast('登入成功！', 'success');
+        await auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
       } catch (e2) {
         toast('登入失敗：' + (e2.message || '請重試'), 'error');
       }
