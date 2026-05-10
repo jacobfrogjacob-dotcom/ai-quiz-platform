@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="theme-color" content="#0B5EAC">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="AI題庫">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.svg">
 <title>AI 無限題庫</title>
 <script>
 // In-app browser detection
@@ -782,6 +789,37 @@ function cleanText(s) {
   return String(s).replace(/\$/g, '').replace(/\\\(/g, '').replace(/\\\)/g, '').replace(/\\\[/g, '').replace(/\\\]/g, '');
 }
 
+function playCorrectSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch(e) { /* ignore audio errors */ }
+}
+function playWrongSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 330;
+    osc.type = 'sawtooth';
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch(e) { /* ignore audio errors */ }
+}
+
 /* ============================================================
    DARK MODE
    ============================================================ */
@@ -840,6 +878,7 @@ auth.onAuthStateChanged(async (user) => {
     }
     await loadProfile(user.uid);
     await loadBookmarks();
+    await updateStreak();
     if (wasLoggedOut) toast('登入成功！', 'success');
   } else {
     state.profile = null;
@@ -853,7 +892,11 @@ auth.onAuthStateChanged(async (user) => {
 auth.getRedirectResult().then((result) => {
   if (result.user && !state.user) {
     state.user = result.user;
-    loadProfile(result.user.uid).then(() => { updateNav(); handleRoute(); });
+    loadProfile(result.user.uid).then(() => {
+      updateStreak();
+      updateNav();
+      handleRoute();
+    });
     toast('登入成功！', 'success');
   }
 }).catch((e) => {
@@ -877,6 +920,8 @@ async function loadProfile(uid) {
         fullName: state.user.displayName || '',
         avatarUrl: state.user.photoURL || '',
         role: isOwner ? 'admin' : 'user',
+        streak: 0,
+        lastActiveDate: '',
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       };
       await db.collection('profiles').doc(uid).set(p);
@@ -1258,10 +1303,10 @@ async function loadPrompts() {
   } catch(e) { /* use defaults */ }
 }
 
-async function generateQuizFromAI(topic, subjectId) {
+async function generateQuizFromAI(topic, subjectId, count) {
   const isEnglish = subjectId === 'english';
   const langRule = isEnglish ? QUIZ_ENGLISH_RULES : QUIZ_CHINESE_RULES;
-  const prompt = `${QUIZ_SYSTEM_PROMPT}\n${langRule}\n\n主題：${topic || '一般知識'}\n題數：10\n請務必根據「${topic}」範圍出題（改變數字、人名、情境），生成 JSON：`;
+  const prompt = `${QUIZ_SYSTEM_PROMPT}\n${langRule}\n\n主題：${topic || '一般知識'}\n題數：${count || 10}\n請務必根據「${topic}」範圍出題（改變數字、人名、情境），生成 JSON：`;
   return await callAI(prompt);
 }
 
@@ -1320,7 +1365,7 @@ function startTimer() {
 /* ============================================================
    SHARE
    ============================================================ */
-function shareResult(correct, total, acc) {
+async function shareResult(correct, total, acc) {
   const btn = event?.target?.closest('button');
   const topic = btn?.dataset?.topic ? decodeURIComponent(btn.dataset.topic) : '練習';
   const url = window.location.origin + window.location.pathname;
@@ -1328,11 +1373,13 @@ function shareResult(correct, total, acc) {
   const shareUrl = isAndroid
     ? `intent://${window.location.host}${window.location.pathname}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https://${window.location.host}${window.location.pathname};end`
     : url;
-  const text = `📚 AI 題庫練習結果\n\n主題：${topic}\n正確：${correct}/${total}\n正確率：${acc}%\n\n${shareUrl}`;
+  const grade = acc >= 90 ? 'A+' : acc >= 80 ? 'A' : acc >= 70 ? 'B' : acc >= 60 ? 'C' : 'D';
+  const emoji = acc >= 80 ? '🎉' : acc >= 60 ? '💪' : '📚';
+  const text = `${emoji} AI 題庫練習結果\n\n📖 ${topic}\n✅ ${correct}/${total}\n📊 正確率：${acc}%\n🏆 等第：${grade}\n\n${shareUrl}`;
   if (navigator.share) {
-    navigator.share({ title: 'AI 題庫練習結果', text, url: shareUrl }).catch(() => toast('分享已取消', 'info'));
+    try { await navigator.share({ title: 'AI 題庫練習結果', text, url: shareUrl }); } catch(e) { if (e.name !== 'AbortError') toast('分享已取消', 'info'); }
   } else {
-    navigator.clipboard.writeText(text).then(() => toast('結果已複製到剪貼簿', 'success')).catch(() => toast('複製失敗', 'error'));
+    try { await navigator.clipboard.writeText(text); toast('結果已複製到剪貼簿', 'success'); } catch(e) { toast('複製失敗', 'error'); }
   }
 }
 
@@ -1527,7 +1574,16 @@ function renderQuiz() {
         <input class="input" id="quizTopic" placeholder="例如：三角形的面積公式、被動語態..." value="${state._lastTopic || ''}" style="font-size:.875rem">
       </div>
 
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 14px;background:var(--gray-50);border-radius:var(--radius-sm)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 14px;background:var(--gray-50);border-radius:var(--radius-sm);flex-wrap:wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span class="text-sm text-muted">題數：</span>
+        <select class="select" style="width:auto;padding:4px 8px;font-size:.8125rem" id="countSelect">
+          <option value="5">5 題</option>
+          <option value="10" selected>10 題</option>
+          <option value="15">15 題</option>
+          <option value="20">20 題</option>
+        </select>
+        <span class="text-xs text-muted">｜</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <span class="text-sm text-muted">計時：</span>
         <select class="select" style="width:auto;padding:4px 8px;font-size:.8125rem" id="timerSelect">
@@ -1540,10 +1596,18 @@ function renderQuiz() {
         </select>
       </div>
 
-      <button class="btn btn-primary btn-block btn-lg" onclick="startQuiz()" id="startQuizBtn" ${!selSubject ? 'disabled' : ''} style="${!selSubject ? 'opacity:.5;pointer-events:none' : ''}">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        ${selSubject ? `AI 生成 ${selSubject.label} 題目` : '請先選擇科目'}
-      </button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-block btn-lg" onclick="startQuiz()" id="startQuizBtn" ${!selSubject ? 'disabled' : ''} style="flex:1;${!selSubject ? 'opacity:.5;pointer-events:none' : ''}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          ${selSubject ? `生成 ${selSubject.label} 題目` : '請先選擇科目'}
+        </button>
+        <button class="btn btn-secondary btn-lg" onclick="startRandomQuiz()" title="隨機抽題，混合科目">
+          🔀 隨機挑戰
+        </button>
+        ${state.user ? `<button class="btn btn-outline btn-lg" onclick="startErrorReview()" title="複習曾經答錯的題目">
+          ❌ 錯題複習
+        </button>` : ''}
+      </div>
 
       <div id="quizLoading" class="loading-overlay" style="display:none">
         <div class="spinner"></div>
@@ -1607,13 +1671,14 @@ async function startQuiz() {
     customTopic ? `- ${customTopic}` : ''
   ].filter(Boolean).join(' ');
 
+  const qCount = parseInt($('countSelect')?.value) || 10;
   state.timerMinutes = parseInt($('timerSelect')?.value) || 0;
   state.timerRemaining = state.timerMinutes * 60;
   if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
 
   loading(true);
   try {
-    const result = await generateQuizFromAI(fullTopic, _selectedSubject);
+    const result = await generateQuizFromAI(fullTopic, _selectedSubject, qCount);
     if (!result.questions || result.questions.length === 0) throw new Error('沒有生成題目');
 
     const questions = shuffle(result.questions).map(q => ({ ...q, id: uid() }));
@@ -1665,6 +1730,67 @@ async function startQuiz() {
       }
     } else {
       toast('題目生成失敗：' + msg, 'error');
+    }
+  } finally {
+    loading(false);
+  }
+}
+
+async function startRandomQuiz() {
+  if (!curriculumData || !curriculumData.subjects || curriculumData.subjects.length === 0) {
+    toast('課綱資料未載入', 'error');
+    return;
+  }
+  const subjects = curriculumData.subjects;
+  const randSubject = subjects[Math.floor(Math.random() * subjects.length)];
+  const units = randSubject.units || [];
+  const randUnit = units.length > 0 ? units[Math.floor(Math.random() * units.length)] : null;
+  const subUnits = randUnit?.subUnits || [];
+  const shuffledSubs = shuffle(subUnits);
+  const pickedSubs = shuffledSubs.slice(0, Math.min(1 + Math.floor(Math.random() * 2), shuffledSubs.length));
+
+  _selectedSubject = randSubject.id;
+  _selectedUnit = randUnit?.id || null;
+  state._selectedSubUnits = pickedSubs;
+
+  const qCount = parseInt($('countSelect')?.value) || 10;
+  state.timerMinutes = parseInt($('timerSelect')?.value) || 0;
+  state.timerRemaining = state.timerMinutes * 60;
+  if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+
+  const topic = [
+    curriculumData.label,
+    '國一',
+    randSubject.label,
+    randUnit?.label || '',
+    pickedSubs.length > 0 ? '（' + pickedSubs.join('、') + '）' : ''
+  ].filter(Boolean).join(' ');
+
+  loading(true);
+  try {
+    const result = await generateQuizFromAI(topic, randSubject.id, qCount);
+    if (!result.questions || result.questions.length === 0) throw new Error('沒有生成題目');
+    const questions = shuffle(result.questions).map(q => ({ ...q, id: uid() }));
+    state.quizSession = {
+      id: uid(),
+      topic,
+      questions,
+      startedAt: new Date().toISOString()
+    };
+    state.quizAnswers = {};
+    state.currentQIdx = 0;
+    state.quizMode = 'taking';
+    renderQuizTaking();
+    startTimer();
+    toast(`🎲 隨機挑戰：${topic}，共 ${questions.length} 題`, 'success');
+  } catch (e) {
+    console.error(e);
+    const msg = e.message || '生成失敗';
+    if (e.code === 'ALL_EXHAUSTED' || msg.includes('所有')) {
+      toast('AI 正在排隊，請稍後再試', 'info');
+      setTimeout(() => startRandomQuiz(), 3000);
+    } else {
+      toast('隨機出題失敗：' + msg, 'error');
     }
   } finally {
     loading(false);
@@ -1781,6 +1907,15 @@ function answerQuestion(qid, answer) {
   if (state._answering) return;
   state._answering = true;
   state.quizAnswers[qid] = answer;
+  const session = state.quizSession;
+  if (session) {
+    const q = session.questions.find(x => x.id === qid);
+    if (q && answer.trim().toLowerCase() === (q.correctAnswer || '').trim().toLowerCase()) {
+      playCorrectSound();
+    } else if (q) {
+      playWrongSound();
+    }
+  }
   renderQuizTaking();
 }
 
@@ -1839,6 +1974,28 @@ function finishQuiz() {
   setTimeout(() => generateNote(), 500);
 }
 
+async function updateStreak() {
+  if (!state.user || !state.profile) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const lastDate = state.profile.lastActiveDate || '';
+  let streak = state.profile.streak || 0;
+  if (lastDate === today) return;
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (lastDate === yesterday) {
+    streak++;
+  } else {
+    streak = 1;
+  }
+  state.profile.streak = streak;
+  state.profile.lastActiveDate = today;
+  try {
+    await db.collection('profiles').doc(state.user.uid).set(
+      { streak, lastActiveDate: today },
+      { merge: true }
+    );
+  } catch(e) { console.error('streak update error:', e); }
+}
+
 async function saveQuizSession(session, score, answers) {
   if (!state.user) return;
   try {
@@ -1859,6 +2016,7 @@ async function saveQuizSession(session, score, answers) {
       batch.set(ref, a);
     });
     await batch.commit();
+    updateStreak();
   } catch(e) { console.error('save error:', e); }
 }
 
@@ -1936,6 +2094,75 @@ function retryQuiz() {
 }
 
 /* ============================================================
+   ERROR REVIEW
+   ============================================================ */
+async function startErrorReview() {
+  if (!state.user) { toast('請先登入', 'error'); return; }
+  loading(true);
+  try {
+    const snap = await db.collection('quiz_answers')
+      .where('userId', '==', state.user.uid)
+      .where('isCorrect', '==', false)
+      .limit(50)
+      .get();
+    const wrongAnswers = [];
+    snap.forEach(d => wrongAnswers.push({ id: d.id, ...d.data() }));
+    if (wrongAnswers.length === 0) {
+      toast('🎉 沒有錯題！你太強了！', 'success');
+      loading(false);
+      return;
+    }
+    const sessionIds = [...new Set(wrongAnswers.map(a => a.sessionId).filter(Boolean))];
+    const questionMap = {};
+    if (sessionIds.length > 0) {
+      const chunks = [];
+      for (let i = 0; i < sessionIds.length; i += 10) chunks.push(sessionIds.slice(i, i + 10));
+      for (const chunk of chunks) {
+        const sSnap = await db.collection('quiz_sessions')
+          .where('userId', '==', state.user.uid)
+          .where('__name__', 'in', chunk)
+          .get();
+        sSnap.forEach(d => {
+          const s = d.data();
+          (s.questions || []).forEach(q => { questionMap[q.id] = q; });
+        });
+      }
+    }
+    const reviewQuestions = wrongAnswers.map(a => {
+      const q = questionMap[a.questionId];
+      if (q) return { ...q, id: uid() };
+      return {
+        id: uid(), type: 'multiple-choice', content: '錯題回顧', difficulty: 'medium',
+        options: ['A. 重新練習', 'B. 查看解析', 'C. 跳過', 'D. '],
+        correctAnswer: a.correctAnswer || 'A. 重新練習',
+        explanation: '此為歷史錯題，正確答案：' + (a.correctAnswer || ''),
+        knowledgeTags: a.knowledgeTags || ['#錯題']
+      };
+    });
+    state.quizSession = {
+      id: uid(),
+      topic: '📝 錯題複習（' + reviewQuestions.length + ' 題）',
+      questions: shuffle(reviewQuestions),
+      startedAt: new Date().toISOString()
+    };
+    state.quizAnswers = {};
+    state.currentQIdx = 0;
+    state.quizMode = 'taking';
+    state.timerMinutes = 0;
+    state.timerRemaining = 0;
+    if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+    navigate('quiz');
+    renderQuizTaking();
+    toast(`📝 錯題複習：共 ${reviewQuestions.length} 題`, 'info');
+  } catch (e) {
+    console.error(e);
+    toast('載入錯題失敗：' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+/* ============================================================
    DASHBOARD
    ============================================================ */
 async function renderDashboard() {
@@ -1991,10 +2218,16 @@ async function renderDashboard() {
       </div>`
     ).join('');
 
+    const streak = state.profile?.streak || 0;
     el.innerHTML = `
       <div class="grid grid-2" style="margin-bottom:20px">
         <div class="card stat-card"><div class="stat-value">${totalQuizzes}</div><div class="stat-label">總練習次數</div></div>
         <div class="card stat-card"><div class="stat-value" style="color:var(--primary)">${avgAcc}%</div><div class="stat-label">平均正確率</div></div>
+        <div class="card stat-card"><div class="stat-value" style="color:#EAB308">${streak > 0 ? '🔥' + streak : '—'}</div><div class="stat-label">連續天數</div></div>
+        <div class="card" style="display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;padding:16px" onclick="startErrorReview()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          <span class="text-sm" style="font-weight:600;color:var(--danger)">錯題複習</span>
+        </div>
       </div>
       ${sessions.length > 0 ? `
       <div class="grid grid-2" style="margin-bottom:20px">
@@ -2983,6 +3216,12 @@ async function saveProfile() {
 /* ============================================================
    INIT（等待課綱載入後啟動）
    ============================================================ */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
 _curriculumLoadPromise.then(() => {
   initDarkMode();
   handleRoute();
