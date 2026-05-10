@@ -2570,15 +2570,17 @@ async function renderAdmin() {
     try { const sSnap = await db.collection('quiz_sessions').get(); sessionCount = sSnap.size; } catch(e) { /* ignore */ }
 
     // Build key sections HTML
+    const apiTotal = (config.geminiKeys?.length||0) + (config.groqKeys?.length||0) + (config.openrouterKeys?.length||0);
+
     function keySection(model, label, keys) {
       return `
         <div style="margin-bottom:16px">
           <div style="font-weight:600;font-size:.9375rem;margin-bottom:8px">${label} <span class="tag tag-sm tag-blue">${keys.length} 組</span></div>
           ${keys.map((k, i) => `
-            <div style="display:flex;gap:8px;margin-bottom:6px" id="keyRow_${model}_${i}">
-              <input class="api-key-input" value="${k.replace(/./g,'•')}" placeholder="${label} Key ${i+1}"
-                onfocus="this.value=state.adminData?.${model}Keys?.[${i}]||''" onblur="if(!this.value.trim()){this.value='${k.replace(/./g,'•')}'}else{updateKeyModel('${model}',${i},this.value)}"
-                onchange="updateKeyModel('${model}',${i},this.value)">
+            <div style="display:flex;gap:8px;margin-bottom:6px;align-items:center" id="keyRow_${model}_${i}">
+              <input class="api-key-input" type="text" id="keyInput_${model}_${i}" value="${'•'.repeat(Math.min(40, Math.max(20, (k||'').length)))}" placeholder="${label} Key ${i+1}"
+                onchange="if(this.dataset.unmasked){updateKeyModel('${model}',${i},this.value)}" style="font-family:monospace">
+              <button class="btn btn-ghost btn-sm" onclick="toggleKeyMask('${model}',${i})" style="padding:2px 6px;font-size:1rem" title="顯示/隱藏 Key">👁️</button>
               <span class="tag tag-sm ${getKeyHealthModel(model, i) === 'healthy' ? 'tag-green' : 'tag-red'}" id="keyStatus_${model}_${i}">${getKeyHealthModel(model, i)}</span>
               <button class="btn btn-ghost btn-sm" onclick="removeKeyModel('${model}',${i})" style="color:var(--danger);padding:4px 8px">✕</button>
             </div>
@@ -2586,16 +2588,19 @@ async function renderAdmin() {
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
             <button class="btn btn-secondary btn-sm" onclick="addKeyModel('${model}')">+ 新增 ${label} Key</button>
             <span class="text-xs text-muted">或</span>
-            <textarea rows="1" id="bulkKeys_${model}" placeholder="一次貼多組 Key（每行一組）" style="flex:1;min-width:120px;padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:.75rem;resize:vertical" oninput="this.rows=Math.min(6,this.value.split(String.fromCharCode(10)).length)"></textarea>
+            <textarea rows="1" id="bulkKeys_${model}" placeholder="一次貼多組 Key（每行一組）" style="flex:1;min-width:120px;padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:.75rem;resize:vertical" oninput="this.rows=Math.min(6,this.value.split('\n').length)"></textarea>
             <button class="btn btn-secondary btn-sm" onclick="bulkAddKeys('${model}')">批量新增</button>
           </div>
         </div>`;
     }
 
+    const apiKeyExpanded = state._apiKeysExpanded || false;
+
     el.innerHTML = `
       <div class="admin-section">
-        <h2>🔑 API Key 資源池</h2>
-        <div class="card">
+        <h2 style="cursor:pointer;user-select:none" onclick="toggleApiKeysSection()">🔑 AI API Keys <span class="tag tag-sm tag-blue">${apiTotal} 組</span> <span style="font-size:.75rem;color:var(--gray-400)">${apiKeyExpanded ? '▲ 點擊收合' : '▼ 點擊查看'}</span></h2>
+        <div class="card" id="apiKeysCard" style="display:${apiKeyExpanded ? 'block' : 'none'}">
+          ${state._apiKeysExpanded ? `
           ${keySection('gemini', 'Gemini', config.geminiKeys)}
           ${keySection('groq', 'Groq', config.groqKeys)}
           ${keySection('openrouter', 'OpenRouter', config.openrouterKeys)}
@@ -2603,7 +2608,8 @@ async function renderAdmin() {
             <button class="btn btn-primary" onclick="saveAdminConfig()">💾 儲存 API Keys</button>
             <button class="btn btn-secondary" onclick="syncKeysFromFirestore()">🔄 重新同步</button>
           </div>
-          <p class="text-xs text-muted mt-2">Key 遮罩顯示 · 點擊輸入框可查看/編輯 · 系統自動輪詢多組 Key</p>
+          <p class="text-xs text-muted mt-2">👁️ 點擊眼睛按鈕顯示 Key · 顯示時可直接編輯</p>
+          ` : ''}
         </div>
       </div>
 
@@ -2738,6 +2744,31 @@ async function renderAdmin() {
     console.error(e);
     el.innerHTML = `<div class="card text-center" style="padding:40px"><p class="text-muted">載入失敗</p></div>`;
   }
+}
+
+// ===== API Key Visibility & Section Toggle =====
+let _keyUnmasked = {};
+
+function toggleKeyMask(model, idx) {
+  const inp = document.getElementById('keyInput_' + model + '_' + idx);
+  const key = model + 'Keys';
+  const realKey = state.adminData?.[key]?.[idx] || '';
+  const uk = model + '_' + idx;
+  if (_keyUnmasked[uk]) {
+    inp.value = '•'.repeat(Math.min(40, Math.max(20, realKey.length)));
+    inp.dataset.unmasked = '';
+    _keyUnmasked[uk] = false;
+  } else {
+    inp.value = realKey;
+    inp.dataset.unmasked = '1';
+    _keyUnmasked[uk] = true;
+    inp.focus();
+  }
+}
+
+function toggleApiKeysSection() {
+  state._apiKeysExpanded = !state._apiKeysExpanded;
+  renderAdmin();
 }
 
 // ===== Prompt Helpers =====
