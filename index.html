@@ -2582,7 +2582,12 @@ async function renderAdmin() {
               <button class="btn btn-ghost btn-sm" onclick="removeKeyModel('${model}',${i})" style="color:var(--danger);padding:4px 8px">✕</button>
             </div>
           `).join('')}
-          <button class="btn btn-secondary btn-sm" onclick="addKeyModel('${model}')">+ 新增 ${label} Key</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+            <button class="btn btn-secondary btn-sm" onclick="addKeyModel('${model}')">+ 新增 ${label} Key</button>
+            <span class="text-xs text-muted">或</span>
+            <textarea rows="1" id="bulkKeys_${model}" placeholder="一次貼多組 Key（每行一組）" style="flex:1;min-width:120px;padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:.75rem;resize:vertical" oninput="this.rows=Math.min(6,this.value.split(String.fromCharCode(10)).length)"></textarea>
+            <button class="btn btn-secondary btn-sm" onclick="bulkAddKeys('${model}')">批量新增</button>
+          </div>
         </div>`;
     }
 
@@ -2754,6 +2759,19 @@ function addKeyModel(model) {
   if (!state.adminData[key]) state.adminData[key] = [];
   state.adminData[key] = [...state.adminData[key], ''];
   renderAdmin();
+}
+
+function bulkAddKeys(model) {
+  const el = document.getElementById('bulkKeys_' + model);
+  if (!el || !el.value.trim()) { toast('請先貼上 API Key（每行一組）', 'error'); return; }
+  const keys = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (keys.length === 0) { toast('未偵測到有效的 Key', 'error'); return; }
+  const key = model + 'Keys';
+  if (!state.adminData[key]) state.adminData[key] = [];
+  state.adminData[key] = [...state.adminData[key], ...keys];
+  el.value = '';
+  renderAdmin();
+  toast('已新增 ' + keys.length + ' 組 ' + model + ' Key', 'success');
 }
 
 function updateKeyModel(model, idx, val) {
