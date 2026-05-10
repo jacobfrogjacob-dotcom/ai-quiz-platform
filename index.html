@@ -2545,18 +2545,18 @@ async function renderAdmin() {
   el.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
 
   try {
-    // Get admin config from Firestore
-    let config = { geminiKeys: [], groqKeys: [], openrouterKeys: [], features: { leaderboard: true, notes: true, review: true }, maintenanceMode: false };
-    try {
-      const doc = await db.collection('admin_config').doc('settings').get();
-      if (doc.exists) config = doc.data();
-    } catch(e) { /* use defaults */ }
-    // Fall back to hardcoded KEY_POOLS if Firestore has no keys
-    if (!config.geminiKeys || config.geminiKeys.length === 0) config.geminiKeys = [...KEY_POOLS.gemini];
-    if (!config.groqKeys || config.groqKeys.length === 0) config.groqKeys = [...KEY_POOLS.groq];
-    if (!config.openrouterKeys || config.openrouterKeys.length === 0) config.openrouterKeys = [...KEY_POOLS.openrouter];
-
-    state.adminData = config;
+    // Get admin config from Firestore (only on initial load, preserve in-memory edits)
+    if (!state.adminData) {
+      let config = { geminiKeys: [], groqKeys: [], openrouterKeys: [], features: { leaderboard: true, notes: true, review: true }, maintenanceMode: false };
+      try {
+        const doc = await db.collection('admin_config').doc('settings').get();
+        if (doc.exists) config = doc.data();
+      } catch(e) { /* use defaults */ }
+      if (!config.geminiKeys || config.geminiKeys.length === 0) config.geminiKeys = [...KEY_POOLS.gemini];
+      if (!config.groqKeys || config.groqKeys.length === 0) config.groqKeys = [...KEY_POOLS.groq];
+      if (!config.openrouterKeys || config.openrouterKeys.length === 0) config.openrouterKeys = [...KEY_POOLS.openrouter];
+      state.adminData = config;
+    }
 
     // Get curriculum edit copy
     state.adminCurriculum = JSON.parse(JSON.stringify(curriculumData || { label: '課綱', grade: '', subjects: [] }));
