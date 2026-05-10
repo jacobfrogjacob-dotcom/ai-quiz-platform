@@ -2551,9 +2551,10 @@ async function renderAdmin() {
       const doc = await db.collection('admin_config').doc('settings').get();
       if (doc.exists) config = doc.data();
     } catch(e) { /* use defaults */ }
-    if (!config.geminiKeys) config.geminiKeys = [];
-    if (!config.groqKeys) config.groqKeys = [];
-    if (!config.openrouterKeys) config.openrouterKeys = [];
+    // Fall back to hardcoded KEY_POOLS if Firestore has no keys
+    if (!config.geminiKeys || config.geminiKeys.length === 0) config.geminiKeys = [...KEY_POOLS.gemini];
+    if (!config.groqKeys || config.groqKeys.length === 0) config.groqKeys = [...KEY_POOLS.groq];
+    if (!config.openrouterKeys || config.openrouterKeys.length === 0) config.openrouterKeys = [...KEY_POOLS.openrouter];
 
     state.adminData = config;
 
@@ -2825,10 +2826,9 @@ async function syncKeysFromFirestore() {
     const doc = await db.collection('admin_config').doc('settings').get();
     if (doc.exists) {
       const data = doc.data();
-      state.adminData = data;
       ['gemini', 'groq', 'openrouter'].forEach(model => {
         const key = model + 'Keys';
-        if (data[key]) {
+        if (data[key] && data[key].length > 0) {
           KEY_POOLS[model] = data[key].filter(k => k.trim());
           KEY_POOLS[model].forEach((k, i) => {
             const hk = model + '_' + i;
@@ -2837,6 +2837,11 @@ async function syncKeysFromFirestore() {
           });
         }
       });
+      // Also fix adminData display: fallback to KEY_POOLS if empty
+      if (!data.geminiKeys || data.geminiKeys.length === 0) data.geminiKeys = [...KEY_POOLS.gemini];
+      if (!data.groqKeys || data.groqKeys.length === 0) data.groqKeys = [...KEY_POOLS.groq];
+      if (!data.openrouterKeys || data.openrouterKeys.length === 0) data.openrouterKeys = [...KEY_POOLS.openrouter];
+      state.adminData = data;
       toast('已從 Firestore 重新同步', 'success');
     }
   } catch(e) { toast('同步失敗', 'error'); }
