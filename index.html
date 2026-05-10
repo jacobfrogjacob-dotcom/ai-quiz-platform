@@ -2570,7 +2570,8 @@ async function renderAdmin() {
     try { const sSnap = await db.collection('quiz_sessions').get(); sessionCount = sSnap.size; } catch(e) { /* ignore */ }
 
     // Build key sections HTML
-    const apiTotal = (config.geminiKeys?.length||0) + (config.groqKeys?.length||0) + (config.openrouterKeys?.length||0);
+    const d = state.adminData;
+    const apiTotal = (d.geminiKeys?.length||0) + (d.groqKeys?.length||0) + (d.openrouterKeys?.length||0);
 
     function keySection(model, label, keys) {
       return `
@@ -2601,9 +2602,9 @@ async function renderAdmin() {
         <h2 style="cursor:pointer;user-select:none" onclick="toggleApiKeysSection()">🔑 AI API Keys <span class="tag tag-sm tag-blue">${apiTotal} 組</span> <span style="font-size:.75rem;color:var(--gray-400)">${apiKeyExpanded ? '▲ 點擊收合' : '▼ 點擊查看'}</span></h2>
         <div class="card" id="apiKeysCard" style="display:${apiKeyExpanded ? 'block' : 'none'}">
           ${state._apiKeysExpanded ? `
-          ${keySection('gemini', 'Gemini', config.geminiKeys)}
-          ${keySection('groq', 'Groq', config.groqKeys)}
-          ${keySection('openrouter', 'OpenRouter', config.openrouterKeys)}
+          ${keySection('gemini', 'Gemini', d.geminiKeys)}
+          ${keySection('groq', 'Groq', d.groqKeys)}
+          ${keySection('openrouter', 'OpenRouter', d.openrouterKeys)}
           <div style="margin-top:12px;display:flex;gap:8px">
             <button class="btn btn-primary" onclick="saveAdminConfig()">💾 儲存 API Keys</button>
             <button class="btn btn-secondary" onclick="syncKeysFromFirestore()">🔄 重新同步</button>
@@ -2659,11 +2660,11 @@ async function renderAdmin() {
       <div class="admin-section">
         <h2>⚙️ 功能開關</h2>
         <div class="card">
-          <div class="toggle-row"><span class="text-sm">排行榜</span><button class="toggle-switch ${config.features?.leaderboard ? 'on' : ''}" onclick="toggleFeature('leaderboard')"></button></div>
-          <div class="toggle-row"><span class="text-sm">筆記生成</span><button class="toggle-switch ${config.features?.notes ? 'on' : ''}" onclick="toggleFeature('notes')"></button></div>
-          <div class="toggle-row"><span class="text-sm">複習系統</span><button class="toggle-switch ${config.features?.review ? 'on' : ''}" onclick="toggleFeature('review')"></button></div>
+          <div class="toggle-row"><span class="text-sm">排行榜</span><button class="toggle-switch ${d.features?.leaderboard ? 'on' : ''}" onclick="toggleFeature('leaderboard')"></button></div>
+          <div class="toggle-row"><span class="text-sm">筆記生成</span><button class="toggle-switch ${d.features?.notes ? 'on' : ''}" onclick="toggleFeature('notes')"></button></div>
+          <div class="toggle-row"><span class="text-sm">複習系統</span><button class="toggle-switch ${d.features?.review ? 'on' : ''}" onclick="toggleFeature('review')"></button></div>
           <div style="border-top:1px solid var(--gray-100);margin-top:8px;padding-top:8px">
-            <div class="toggle-row"><span class="text-sm" style="color:var(--danger)">🚨 緊急維護模式</span><button class="toggle-switch ${config.maintenanceMode ? 'on' : ''}" style="${config.maintenanceMode ? 'background:var(--danger)' : ''}" onclick="toggleMaintenance()"></button></div>
+            <div class="toggle-row"><span class="text-sm" style="color:var(--danger)">🚨 緊急維護模式</span><button class="toggle-switch ${d.maintenanceMode ? 'on' : ''}" style="${d.maintenanceMode ? 'background:var(--danger)' : ''}" onclick="toggleMaintenance()"></button></div>
           </div>
         </div>
       </div>
@@ -2674,23 +2675,23 @@ async function renderAdmin() {
           <p class="text-xs text-muted mb-2">修改各功能的 AI 提示詞，留空則使用預設值。儲存後需重整頁面生效。</p>
           <div class="input-group">
             <label class="input-label">📄 系統提示詞（出題用）</label>
-            <textarea class="input" rows="6" id="prompt_systemPrompt" onchange="updatePrompt('systemPrompt',this.value)">${config.prompts?.systemPrompt || QUIZ_SYSTEM_PROMPT}</textarea>
+            <textarea class="input" rows="6" id="prompt_systemPrompt" onchange="updatePrompt('systemPrompt',this.value)">${d.prompts?.systemPrompt || QUIZ_SYSTEM_PROMPT}</textarea>
           </div>
           <div class="input-group">
             <label class="input-label">🇬🇧 英文題目規則</label>
-            <textarea class="input" rows="4" id="prompt_englishRules" onchange="updatePrompt('englishRules',this.value)">${config.prompts?.englishRules || QUIZ_ENGLISH_RULES}</textarea>
+            <textarea class="input" rows="4" id="prompt_englishRules" onchange="updatePrompt('englishRules',this.value)">${d.prompts?.englishRules || QUIZ_ENGLISH_RULES}</textarea>
           </div>
           <div class="input-group">
             <label class="input-label">🇹🇼 中文題目規則</label>
-            <textarea class="input" rows="3" id="prompt_chineseRules" onchange="updatePrompt('chineseRules',this.value)">${config.prompts?.chineseRules || QUIZ_CHINESE_RULES}</textarea>
+            <textarea class="input" rows="3" id="prompt_chineseRules" onchange="updatePrompt('chineseRules',this.value)">${d.prompts?.chineseRules || QUIZ_CHINESE_RULES}</textarea>
           </div>
           <div class="input-group">
             <label class="input-label">📊 錯誤分析提示詞</label>
-            <textarea class="input" rows="4" id="prompt_errorAnalysisPrompt" onchange="updatePrompt('errorAnalysisPrompt',this.value)">${config.prompts?.errorAnalysisPrompt || ERROR_ANALYSIS_PROMPT}</textarea>
+            <textarea class="input" rows="4" id="prompt_errorAnalysisPrompt" onchange="updatePrompt('errorAnalysisPrompt',this.value)">${d.prompts?.errorAnalysisPrompt || ERROR_ANALYSIS_PROMPT}</textarea>
           </div>
           <div class="input-group">
             <label class="input-label">📓 筆記生成提示詞</label>
-            <textarea class="input" rows="4" id="prompt_notePrompt" onchange="updatePrompt('notePrompt',this.value)">${config.prompts?.notePrompt || NOTE_PROMPT_PREFIX}</textarea>
+            <textarea class="input" rows="4" id="prompt_notePrompt" onchange="updatePrompt('notePrompt',this.value)">${d.prompts?.notePrompt || NOTE_PROMPT_PREFIX}</textarea>
           </div>
           <button class="btn btn-primary" onclick="saveAdminConfig()">💾 儲存所有設定（含提示詞）</button>
         </div>
