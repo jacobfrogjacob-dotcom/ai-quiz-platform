@@ -859,11 +859,15 @@ auth.onAuthStateChanged(async (user) => {
   handleRoute();
 });
 
-// Handle redirect result — ensure login state after Google redirect
+// Handle redirect result — critical for mobile redirect flow
 auth.getRedirectResult().then((result) => {
-  if (result.user) toast('登入成功！', 'success');
+  if (result.user && !state.user) {
+    state.user = result.user;
+    loadProfile(result.user.uid).then(() => { updateNav(); handleRoute(); });
+    toast('登入成功！', 'success');
+  }
 }).catch((e) => {
-  console.warn('Redirect result error (non-fatal):', e.code);
+  console.warn('Redirect result error:', e.code);
 });
 
 async function loadProfile(uid) {
@@ -899,9 +903,28 @@ async function updateProfile(data) {
   } catch(e) { console.error('updateProfile error:', e); throw e; }
 }
 
-function signInWithGoogle() {
+async function signInWithGoogle() {
   toast('正在導向 Google 登入...', 'info');
-  auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+  try {
+    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    await auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+  } catch (e) {
+    console.error('signInWithRedirect error:', e);
+    // Fallback: try popup on mobile if redirect fails
+    if (e.code === 'auth/operation-not-supported-in-this-environment' ||
+        e.message?.includes('indexedDB') || e.message?.includes('storage')) {
+      try {
+        toast('嘗試彈出視窗登入...', 'info');
+        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        const result = await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+        if (result.user) toast('登入成功！', 'success');
+      } catch (e2) {
+        toast('登入失敗：' + (e2.message || '請重試'), 'error');
+      }
+    } else {
+      toast('登入失敗：' + (e.message || '請重試'), 'error');
+    }
+  }
 }
 
 function signOut() {
