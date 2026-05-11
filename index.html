@@ -2785,6 +2785,12 @@ async function renderAdmin() {
       if (!config.openrouterKeys || config.openrouterKeys.length === 0) config.openrouterKeys = [...KEY_POOLS.openrouter];
       state.adminData = config;
     }
+    // Sync adminData → KEY_POOLS so health tags are correct
+    ['groq', 'openrouter'].forEach(m => {
+      const k = m + 'Keys';
+      if (state.adminData[k]) KEY_POOLS[m] = state.adminData[k].filter(x => x.trim());
+    });
+    rebuildKeyHealth();
 
     // Get curriculum edit copy
     state.adminCurriculum = JSON.parse(JSON.stringify(curriculumData || { label: '課綱', grade: '', subjects: [] }));
@@ -2810,7 +2816,7 @@ async function renderAdmin() {
               <input class="api-key-input" type="text" id="keyInput_${model}_${i}" value="${'•'.repeat(Math.min(40, Math.max(20, (k||'').length)))}" placeholder="${label} Key ${i+1}"
                 onchange="if(this.dataset.unmasked){updateKeyModel('${model}',${i},this.value)}" style="font-family:monospace">
               <button class="btn btn-ghost btn-sm" onclick="toggleKeyMask('${model}',${i})" style="padding:2px 6px;font-size:1rem" title="顯示/隱藏 Key">👁️</button>
-              <span class="tag tag-sm ${getKeyHealthModel(model, i) === 'healthy' ? 'tag-green' : 'tag-red'}" id="keyStatus_${model}_${i}">${getKeyHealthModel(model, i)}</span>
+              <span class="tag tag-sm ${keyHealthClass(model, i)}" id="keyStatus_${model}_${i}">${getKeyHealthModel(model, i)}</span>
               <button class="btn btn-ghost btn-sm" onclick="removeKeyModel('${model}',${i})" style="color:var(--danger);padding:4px 8px">✕</button>
             </div>
           `).join('')}
@@ -3011,9 +3017,15 @@ function updatePrompt(key, val) {
 
 function getKeyHealthModel(model, idx) {
   const h = keyHealth[model + '_' + idx];
-  if (!h) return 'unknown';
+  if (!h) return '未儲存';
   if (h.status === 'cooldown') return '冷卻中';
   return 'healthy';
+}
+function keyHealthClass(model, idx) {
+  const s = getKeyHealthModel(model, idx);
+  if (s === 'healthy') return 'tag-green';
+  if (s === '未儲存') return 'tag-yellow';
+  return 'tag-red';
 }
 
 function addKeyModel(model) {
