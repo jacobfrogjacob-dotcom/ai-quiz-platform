@@ -548,6 +548,7 @@ th { color: var(--gray-500); font-weight: 500; font-size: .75rem; text-transform
 .overflow-hidden { overflow: hidden; }
 .p-4 { padding: 16px; }
 .py-2 { padding-top: 8px; padding-bottom: 8px; }
+.ml-2 { margin-left: 8px; }
 .border-bottom { border-bottom: 1px solid var(--gray-100); }
 </style>
 </head>
@@ -576,6 +577,9 @@ th { color: var(--gray-500); font-weight: 500; font-size: .75rem; text-transform
     <div class="nav-user" id="navUser"></div>
   </div>
 </nav>
+
+<!-- ===== ANNOUNCEMENT BAR ===== -->
+<div id="announcementBar" style="display:none"></div>
 
 <!-- ==========================================================
      MAIN CONTENT
@@ -740,7 +744,10 @@ const state = {
   timerMinutes: 10,
   timerRemaining: 0,
   timerInterval: null,
-  useServerProxy: false
+  useServerProxy: false,
+  _announcementDraft: '',
+  _announcementTypeDraft: 'info',
+  _announcementEnabledDraft: true
 };
 
 /* ============================================================
@@ -900,6 +907,8 @@ function handleRoute() {
   const page = $('page-' + hash);
   if (page) page.classList.add('active');
   qsa('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.page === hash));
+
+  renderAnnouncement();
 
   switch (hash) {
     case 'home': renderHome(); break;
@@ -1221,14 +1230,17 @@ async function callAI(prompt) {
     }
   }
   const chain = ['groq', 'openrouter'];
+  let lastErr = null;
   for (const model of chain) {
     try {
       const result = await tryModel(model, prompt, false);
       if (result) return result;
     } catch (e) {
-      if (e.code === 'ALL_EXHAUSTED') throw e;
+      lastErr = e;
+      if (e.code === 'ALL_EXHAUSTED' || e.code === 'NETWORK_ERROR') break;
     }
   }
+  if (lastErr?.code === 'NETWORK_ERROR') throw lastErr;
   throw { code: 'ALL_EXHAUSTED', message: '所有 AI 模型均無法使用', retryAfter: 3 };
 }
 
@@ -1277,7 +1289,10 @@ async function callGroq(prompt, keyIdx) {
     text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     return JSON.parse(text);
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error('Groq timeout');
+    if (e.name === 'AbortError') throw new Error('Groq 連線超時 (60s)');
+    if (e instanceof TypeError && e.message?.includes('fetch')) {
+      throw { code: 'NETWORK_ERROR', message: '瀏覽器阻擋了 API 連線（file:// CORS 或網路問題）。請使用 `npx serve .` 或部署到 Vercel' };
+    }
     throw e;
   } finally {
     clearTimeout(timeout);
@@ -1307,7 +1322,10 @@ async function callOpenRouter(prompt, keyIdx) {
     text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     return JSON.parse(text);
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error('OpenRouter timeout');
+    if (e.name === 'AbortError') throw new Error('OpenRouter 連線超時 (60s)');
+    if (e instanceof TypeError && e.message?.includes('fetch')) {
+      throw { code: 'NETWORK_ERROR', message: '瀏覽器阻擋了 API 連線（file:// CORS 或網路問題）。請使用 `npx serve .` 或部署到 Vercel' };
+    }
     throw e;
   } finally {
     clearTimeout(timeout);
@@ -1390,7 +1408,8 @@ async function analyzeErrors(answers) {
   try {
     return await callAIFast(prompt);
   } catch (e) {
-    return { summary: '分析失敗', errorAnalysis: [], weakTags: [], studyPlan: '請稍後再試' };
+    console.warn('analyzeErrors failed:', e);
+    return { summary: e.code === 'NETWORK_ERROR' ? e.message : '分析失敗（網路或 API 問題）', errorAnalysis: [], weakTags: [], studyPlan: '請確認 API 連線正常後再試' };
   }
 }
 
@@ -1560,6 +1579,74 @@ async function loadCurriculum() {
 _curriculumLoadPromise = loadCurriculum();
 // Load custom prompts from Firestore (non-blocking)
 loadPrompts();
+// Load announcement
+let _announcementData = null;
+let _announcementDismissed = {};
+
+async function loadAnnouncement() {
+  try {
+    const doc = await db.collection('admin_config').doc('announcements').get();
+    if (doc.exists) {
+      _announcementData = doc.data();
+      const stored = localStorage.getItem('announcementDismissed');
+      if (stored) { try { _announcementDismissed = JSON.parse(stored); } catch(e) {} }
+    }
+  } catch(e) { /* no announcement */ }
+}
+
+function renderAnnouncement() {
+  const container = $('announcementBar');
+  if (!container) return;
+  if (!_announcementData || !_announcementData.enabled || !_announcementData.text) {
+    container.style.display = 'none';
+    return;
+  }
+  const id = _announcementData.id || (_announcementData.text || '').slice(0, 40);
+  if (_announcementDismissed[id]) {
+    container.style.display = 'none';
+    return;
+  }
+  const type = _announcementData.type || 'info';
+  const colors = { info: 'var(--primary)', warning: '#D97706', error: '#DC2626' };
+  const bgColors = { info: '#E8F0FE', warning: '#FEF3C7', error: '#FEE2E2' };
+  container.style.display = 'block';
+  container.innerHTML = `
+    <div style="background:${bgColors[type] || bgColors.info};border-bottom:2px solid ${colors[type] || colors.info};padding:10px 16px;display:flex;align-items:center;gap:12px;justify-content:center;position:relative">
+      <span style="font-size:.875rem;font-weight:500;flex:1;text-align:center">${_announcementData.text}</span>
+      <button onclick="dismissAnnouncement()" style="background:none;border:none;cursor:pointer;font-size:1.25rem;color:var(--gray-500);padding:0 4px;flex-shrink:0" title="關閉">✕</button>
+    </div>`;
+}
+
+function dismissAnnouncement() {
+  if (!_announcementData || !_announcementData.text) return;
+  const id = _announcementData.id || (_announcementData.text || '').slice(0, 40);
+  _announcementDismissed[id] = true;
+  localStorage.setItem('announcementDismissed', JSON.stringify(_announcementDismissed));
+  const container = $('announcementBar');
+  if (container) container.style.display = 'none';
+}
+
+async function saveAnnouncement() {
+  const text = state._announcementDraft || document.getElementById('announcementText')?.value?.trim() || '';
+  const type = state._announcementTypeDraft || document.getElementById('announcementType')?.value || 'info';
+  const enabled = state._announcementEnabledDraft !== undefined ? state._announcementEnabledDraft : true;
+  loading(true);
+  try {
+    const data = { text, type, enabled, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    await db.collection('admin_config').doc('announcements').set(data);
+    _announcementData = data;
+    localStorage.removeItem('announcementDismissed');
+    _announcementDismissed = {};
+    renderAnnouncement();
+    toast('公告已儲存', 'success');
+  } catch(e) {
+    toast('儲存失敗：' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+loadAnnouncement();
 
 /* ============================================================
    QUIZ — UI
@@ -1758,23 +1845,21 @@ async function startQuiz() {
   } catch(e) {
     console.error(e);
     const msg = e.message || '生成失敗';
-    if (e.code === 'ALL_EXHAUSTED' || msg.includes('所有')) {
+    const code = e.code || '';
+    if (code === 'NETWORK_ERROR') {
+      toast('🚫 ' + msg, 'error', 10000);
+    } else if (code === 'ALL_EXHAUSTED' || msg.includes('所有')) {
       const coolingEl = $('quizLoading') || $('startQuizBtn');
       if (coolingEl) {
         coolingEl.insertAdjacentHTML('afterend',
           `<div class="card" style="margin-top:12px;text-align:center;padding:24px;background:var(--warning-light);border:2px solid #FCD34D" id="retryCard">
             <div style="font-size:2rem;margin-bottom:8px">🧠</div>
-            <div style="font-size:1rem;font-weight:600">AI 正在深思中，請稍候 3 秒</div>
-            <div class="text-xs text-muted mt-2">系統將自動重試...</div>
-            <div class="spinner" style="margin-top:12px;width:20px;height:20px"></div>
+            <div style="font-size:1rem;font-weight:600">所有 API Key 暫時無法使用</div>
+            <div class="text-xs text-muted mt-2">請至管理後台 🔑 確認 Key 的狀態，或點擊下方重試</div>
+            <button class="btn btn-primary btn-sm mt-2" onclick="const c=document.getElementById('retryCard');if(c)c.remove();startQuiz()">手動重試</button>
           </div>`
         );
       }
-      setTimeout(() => {
-        const card = $('retryCard');
-        if (card) card.remove();
-        startQuiz();
-      }, 3000);
     } else if (msg.includes('冷卻')) {
       toast('🔄 ' + msg, 'info');
       const coolingEl = $('quizLoading') || $('startQuizBtn');
@@ -2788,7 +2873,8 @@ ${correct.slice(0, 5).map(a => `- ${cleanText(a.content || '')} → ${(a.knowled
     renderNotes();
   } catch(e) {
     console.error(e);
-    toast('生成筆記失敗：' + e.message, 'error');
+    const msg = e.code === 'NETWORK_ERROR' ? e.message : (e.message || '不明錯誤');
+    toast('生成筆記失敗：' + msg, 'error');
   } finally {
     loading(false);
   }
@@ -2942,6 +3028,7 @@ async function renderAdmin() {
                 onchange="if(this.dataset.unmasked){updateKeyModel('${model}',${i},this.value)}" style="font-family:monospace">
               <button class="btn btn-ghost btn-sm" onclick="toggleKeyMask('${model}',${i})" style="padding:2px 6px;font-size:1rem" title="顯示/隱藏 Key">👁️</button>
               <span class="tag tag-sm ${keyHealthClass(model, i)}" id="keyStatus_${model}_${i}">${getKeyHealthModel(model, i)}</span>
+              <button class="btn btn-ghost btn-sm" onclick="testApiKey('${model}',${i})" style="padding:2px 6px;font-size:.7rem" title="測試此 Key">🔍</button>
               <button class="btn btn-ghost btn-sm" onclick="removeKeyModel('${model}',${i})" style="color:var(--danger);padding:4px 8px">✕</button>
             </div>
           `).join('')}
@@ -2964,11 +3051,12 @@ async function renderAdmin() {
           ${keySection('gemini', 'Gemini', d.geminiKeys)}<div class="text-xs text-muted" style="margin:-12px 0 16px">⚠️ Gemini 已從輪詢線路移除（太慢），僅供顯示</div>
           ${keySection('groq', 'Groq', d.groqKeys)}
           ${keySection('openrouter', 'OpenRouter', d.openrouterKeys)}
-          <div style="margin-top:12px;display:flex;gap:8px">
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-primary" onclick="saveAdminConfig()">💾 儲存 API Keys</button>
             <button class="btn btn-secondary" onclick="syncKeysFromFirestore()">🔄 重新同步</button>
+            <button class="btn btn-outline" onclick="testAllApiKeys()">🔍 測試全部 Key</button>
           </div>
-          <p class="text-xs text-muted mt-2">👁️ 點擊眼睛按鈕顯示 Key · 顯示時可直接編輯</p>
+          <p class="text-xs text-muted mt-2">👁️ 點擊眼睛按鈕顯示 Key · 顯示時可直接編輯 · 🔍 測試單個或全部 Key</p>
           ` : ''}
         </div>
       </div>
@@ -3026,6 +3114,33 @@ async function renderAdmin() {
           <div style="border-top:1px solid var(--gray-100);margin-top:8px;padding-top:8px">
             <div class="toggle-row"><span class="text-sm" style="color:var(--danger)">🚨 緊急維護模式</span><button class="toggle-switch ${d.maintenanceMode ? 'on' : ''}" style="${d.maintenanceMode ? 'background:var(--danger)' : ''}" onclick="toggleMaintenance()"></button></div>
           </div>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <h2>📢 公告管理</h2>
+        <div class="card">
+          <div class="input-group">
+            <label class="input-label">公告內容</label>
+            <textarea class="input" rows="2" id="announcementText" placeholder="輸入公告文字，留空則不顯示" onchange="state._announcementDraft=this.value" style="resize:vertical">${_announcementData?.text || ''}</textarea>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+            <div class="input-group" style="flex:1;min-width:120px">
+              <label class="input-label">類型</label>
+              <select class="select" id="announcementType" onchange="state._announcementTypeDraft=this.value">
+                <option value="info" ${(_announcementData?.type||'info')==='info'?'selected':''}>ℹ️ 資訊（藍色）</option>
+                <option value="warning" ${_announcementData?.type==='warning'?'selected':''}>⚠️ 警告（黃色）</option>
+                <option value="error" ${_announcementData?.type==='error'?'selected':''}>🚨 錯誤（紅色）</option>
+              </select>
+            </div>
+            <div class="input-group" style="flex:0">
+              <label class="input-label">啟用</label>
+              <button class="toggle-switch ${(_announcementData?.enabled!==false)?'on':''}" id="announcementToggle" onclick="this.classList.toggle('on');state._announcementEnabledDraft=this.classList.contains('on')"></button>
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="saveAnnouncement()">💾 儲存公告</button>
+          <button class="btn btn-outline btn-sm ml-2" onclick="if(confirm('確定清除公告？')){document.getElementById('announcementText').value='';localStorage.removeItem('announcementDismissed');_announcementData=null;renderAnnouncement();toast('公告已清除','info')}">🗑️ 清除公告</button>
+          <p class="text-xs text-muted mt-2">公告會顯示在所有頁面頂部，使用者可手動關閉</p>
         </div>
       </div>
 
@@ -3136,6 +3251,111 @@ function toggleApiKeysSection() {
 function updatePrompt(key, val) {
   if (!state.adminData.prompts) state.adminData.prompts = {};
   state.adminData.prompts[key] = val;
+}
+
+// ===== Test API Key (actual live call) =====
+async function testApiKey(model, idx) {
+  const key = model + 'Keys';
+  const apiKey = state.adminData?.[key]?.[idx];
+  if (!apiKey) { toast('此 Key 為空白', 'error'); return; }
+  if (model === 'gemini') { toast('Gemini 已不在輪詢線路中，無需測試', 'info'); return; }
+
+  const modelName = model === 'groq' ? 'llama-3.3-70b-versatile' : 'deepseek/deepseek-chat';
+  const url = model === 'groq'
+    ? 'https://api.groq.com/openai/v1/chat/completions'
+    : 'https://openrouter.ai/api/v1/chat/completions';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST', signal: controller.signal,
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+        ...(model === 'openrouter' ? { 'HTTP-Referer': window.location.origin, 'X-Title': 'AIQuiz' } : {})
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: [{ role: 'user', content: 'Say "ok" and nothing else.' }],
+        temperature: 0, max_tokens: 10
+      })
+    });
+    if (res.ok) {
+      if (statusEl) { statusEl.textContent = 'healthy'; statusEl.className = 'tag tag-sm tag-green'; }
+      toast(`✅ ${model} Key #${idx+1} 測試通過`, 'success');
+      // Update local health
+      const hk = model + '_' + idx;
+      if (keyHealth[hk]) keyHealth[hk].status = 'healthy';
+    } else if (res.status === 429) {
+      if (statusEl) { statusEl.textContent = '429限流'; statusEl.className = 'tag tag-sm tag-red'; }
+      toast(`⏳ ${model} Key #${idx+1} 被限流 (429)`, 'info');
+    } else {
+      const errText = await res.text().catch(() => '');
+      const short = (errText || '').slice(0, 100) || 'HTTP ' + res.status;
+      if (statusEl) { statusEl.textContent = '異常'; statusEl.className = 'tag tag-sm tag-red'; }
+      toast(`❌ ${model} Key #${idx+1} 測試失敗：${short}`, 'error');
+    }
+  } catch (e) {
+    const msg = e.name === 'AbortError' ? '連線超時 (15s)' : (e.message || '連線失敗');
+    if (statusEl) { statusEl.textContent = '連線錯誤'; statusEl.className = 'tag tag-sm tag-red'; }
+    toast(`❌ ${model} Key #${idx+1} ${msg}`, 'error');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ===== Test All API Keys =====
+async function testAllApiKeys() {
+  const models = ['groq', 'openrouter'];
+  let tested = 0, passed = 0;
+  toast('🔍 開始測試所有 API Key（略過 Gemini）...', 'info');
+  for (const model of models) {
+    const key = model + 'Keys';
+    const keys = state.adminData?.[key] || [];
+    for (let i = 0; i < keys.length; i++) {
+      if (!keys[i].trim()) continue;
+      tested++;
+      const statusEl = document.getElementById('keyStatus_' + model + '_' + i);
+      if (statusEl) { statusEl.textContent = '測試中...'; statusEl.className = 'tag tag-sm tag-yellow'; }
+
+      const modelName = model === 'groq' ? 'llama-3.3-70b-versatile' : 'deepseek/deepseek-chat';
+      const url = model === 'groq'
+        ? 'https://api.groq.com/openai/v1/chat/completions'
+        : 'https://openrouter.ai/api/v1/chat/completions';
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      try {
+        const res = await fetch(url, {
+          method: 'POST', signal: controller.signal,
+          headers: {
+            'Authorization': 'Bearer ' + keys[i],
+            'Content-Type': 'application/json',
+            ...(model === 'openrouter' ? { 'HTTP-Referer': window.location.origin, 'X-Title': 'AIQuiz' } : {})
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [{ role: 'user', content: 'Say "ok" and nothing else.' }],
+            temperature: 0, max_tokens: 10
+          })
+        });
+        if (res.ok) {
+          if (statusEl) { statusEl.textContent = 'healthy'; statusEl.className = 'tag tag-sm tag-green'; }
+          const hk = model + '_' + i;
+          if (keyHealth[hk]) keyHealth[hk].status = 'healthy';
+          passed++;
+        } else {
+          if (statusEl) { statusEl.textContent = '異常' + (res.status === 429 ? '(429)' : ''); statusEl.className = 'tag tag-sm tag-red'; }
+        }
+      } catch(e) {
+        if (statusEl) { statusEl.textContent = '連線錯誤'; statusEl.className = 'tag tag-sm tag-red'; }
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+  toast(`測試完成：${passed}/${tested} 通過`, passed === tested ? 'success' : 'warning');
 }
 
 // ===== API Key Helpers (multi-model) =====
@@ -3360,6 +3580,13 @@ if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });
+}
+
+// Detect file:// protocol — CORS will block all API calls
+if (window.location.protocol === 'file:') {
+  setTimeout(() => {
+    toast('⚠️ 以 file:// 開啟：API 呼叫將被瀏覽器 CORS 阻擋。請改用 `npx serve .` 或部署到 Vercel', 'error', 8000);
+  }, 1500);
 }
 
 _curriculumLoadPromise.then(() => {
