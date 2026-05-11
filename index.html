@@ -738,7 +738,8 @@ const state = {
   adminData: null,
   timerMinutes: 10,
   timerRemaining: 0,
-  timerInterval: null
+  timerInterval: null,
+  useServerProxy: false
 };
 
 /* ============================================================
@@ -1039,180 +1040,169 @@ function renderHome() {
 }
 
 /* ============================================================
-   🤖 MULTI-MODEL AI ENGINE（Gemini + DeepSeek + Groq）
+   🤖 AI ENGINE（Groq + OpenRouter，無 Gemini）
    ============================================================ */
 
 // ===== API Key Pools =====
 const KEY_POOLS = {
-  gemini: [
-    "AIzaSyBjCOqCmAm-L25tlv8NS_qZbPL3uEjGtUg",
-    "AIzaSyAwJpaE2ENiECXYBSTDvh5mKZMmbU05i8o",
-    "AIzaSyDu-lUoGJp-I3K5lhcdDmLK_6n6AGor9jw",
-    "AIzaSyCMOLeipsiy9RA4GQvARcSC26SB62sGTqM",
-    "AIzaSyD00LHoj6w7JkM6cvIqpFptQy0IFMALxf8"
-  ],
-  deepseek: [], // 停用，改用 OpenRouter
   groq: [
     "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"
   ],
   openrouter: [
     "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"
-  ]
+  ],
+  gemini: [],   // 保留給 admin 後台，不參與輪詢
+  deepseek: []  // 停用
 };
 
-// ===== Key Health Tracking =====
+// ===== Key Health & Per-Key Cursor =====
 let keyHealth = {};
-Object.entries(KEY_POOLS).forEach(([model, keys]) => {
-  keys.forEach((k, i) => {
-    keyHealth[model + '_' + i] = { key: k, status: 'healthy', cooldownUntil: 0, lastUsed: 0 };
+function rebuildKeyHealth() {
+  const old = keyHealth;
+  keyHealth = {};
+  Object.entries(KEY_POOLS).forEach(([model, keys]) => {
+    keys.forEach((k, i) => {
+      const id = model + '_' + i;
+      keyHealth[id] = old[id] || { key: k, status: 'healthy', cooldownUntil: 0, lastUsed: 0 };
+      keyHealth[id].key = k;
+    });
   });
-});
-let _keyIdx = { gemini: 0, deepseek: 0, groq: 0, openrouter: 0 };
-
-// ===== Rate Limiter =====
-let _requestLog = [];
-const RPM_LIMIT = { groq: 30, openrouter: 10, gemini: 10, deepseek: 0 };
-const MIN_INTERVAL = 2000; // 2s mandatory delay
-
-async function rateLimit(model) {
-  const now = Date.now();
-  _requestLog = _requestLog.filter(t => now - t.time < 60000);
-  const rpm = RPM_LIMIT[model] || 15;
-  const recentCount = _requestLog.filter(t => t.model === model).length;
-  if (recentCount >= rpm) {
-    const sorted = _requestLog.filter(t => t.model === model).sort((a,b) => b.time - a.time);
-    const oldest = sorted[sorted.length - 1];
-    const wait = 60000 - (now - (oldest ? oldest.time : now));
-    throw { code: 'RATE_LIMITED', wait, message: `AI 冷卻排隊中，請等待 ${Math.ceil(wait/1000)} 秒...` };
-  }
-  const lastReqs = _requestLog.filter(t => t.model === model).sort((a,b) => b.time - a.time);
-  const lastReq = lastReqs[0];
-  if (lastReq && now - lastReq.time < MIN_INTERVAL) {
-    await delay(MIN_INTERVAL - (now - lastReq.time));
-  }
-  _requestLog.push({ time: now, model });
 }
+rebuildKeyHealth();
+let _keyCursor = { groq: 0, openrouter: 0 };
+
+// ===== Per-Key Rate Limiter (true per-key, not per-model) =====
+let _reqLog = [];
+const RPM_PER_KEY = 25;
+const MIN_INTERVAL = 1500;
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ===== AI Call Router =====
-async function callAI(prompt) {
-  let lastErr;
-  const textChain = ['groq', 'openrouter', 'gemini'];
-  for (const model of textChain) {
-    while (_keyIdx[model] < KEY_POOLS[model].length) {
-      const idx = _keyIdx[model];
-      const healthKey = model + '_' + idx;
-      const health = keyHealth[healthKey];
-      if (!health || !health.key) { _keyIdx[model]++; continue; }
-      if (health.status === 'cooldown' && Date.now() < health.cooldownUntil) { _keyIdx[model]++; continue; }
+async function checkKeyRate(keyId) {
+  const now = Date.now();
+  _reqLog = _reqLog.filter(t => now - t.time < 60000);
+  const recent = _reqLog.filter(t => t.keyId === keyId).length;
+  if (recent >= RPM_PER_KEY) {
+    const oldest = _reqLog.filter(t => t.keyId === keyId).sort((a, b) => b.time - a.time).pop();
+    const wait = oldest ? 60000 - (now - oldest.time) : 1000;
+    throw { code: 'RATE_LIMITED', wait: Math.ceil(wait / 1000), message: `此 Key 達速率上限，冷卻 ${Math.ceil(wait/1000)} 秒` };
+  }
+  _reqLog.push({ time: now, keyId });
+}
 
-      try {
-        await rateLimit(model);
-        let result;
-        if (model === 'groq') result = await callGroq(prompt, idx);
-        else if (model === 'openrouter') result = await callOpenRouter(prompt, idx);
-        else result = await callGemini(prompt, idx);
-        health.status = 'healthy';
-        health.lastUsed = Date.now();
-        return result;
-      } catch (e) {
-        const cooldownSecs = model === 'groq' ? 60 : 30;
-        if (e.status === 429 || e.message?.includes('429') || e.message?.includes('timeout') || e.message?.includes('超時')) {
-          health.status = 'cooldown';
-          health.cooldownUntil = Date.now() + (cooldownSecs * 1000);
-          _keyIdx[model]++;
-          lastErr = e;
-          continue;
-        }
-        lastErr = e;
-        _keyIdx[model]++;
-      }
+// ===== Try a single key with proper rate limiting & cooldown =====
+async function tryKey(model, idx, prompt, isFast) {
+  const healthKey = model + '_' + idx;
+  const health = keyHealth[healthKey];
+  if (!health || !health.key) return null;
+  if (health.status === 'cooldown' && Date.now() < health.cooldownUntil) return null;
+  try {
+    await checkKeyRate(healthKey);
+    let result;
+    if (model === 'groq') result = await callGroq(prompt, idx);
+    else result = await callOpenRouter(prompt, idx);
+    health.status = 'healthy';
+    health.lastUsed = Date.now();
+    return result;
+  } catch (e) {
+    const isRateLimit = e.status === 429 || e.code === 'RATE_LIMITED' || e.message?.includes('429');
+    const isTimeout = e.message?.includes('timeout') || e.message?.includes('超時') || e.message?.includes('Timed out');
+    if (isRateLimit || isTimeout) {
+      health.status = 'cooldown';
+      health.cooldownUntil = Date.now() + (isRateLimit ? 30000 : 10000);
     }
-    _keyIdx[model] = 0;
+    throw e;
+  }
+}
+
+// ===== Try all keys in a model (round-robin), return result or null =====
+async function tryModel(model, prompt, isFast) {
+  const pool = KEY_POOLS[model];
+  if (!pool || pool.length === 0) return null;
+  const startIdx = _keyCursor[model] || 0;
+  const len = pool.length;
+  let lastErr = null;
+  for (let i = 0; i < len; i++) {
+    const idx = (startIdx + i) % len;
+    const healthKey = model + '_' + idx;
+    const health = keyHealth[healthKey];
+    if (!health || !health.key) continue;
+    if (health.status === 'cooldown' && Date.now() < health.cooldownUntil) continue;
+    try {
+      const result = await tryKey(model, idx, prompt, isFast);
+      if (result !== null) {
+        _keyCursor[model] = (idx + 1) % len;
+        return result;
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return null;
+}
+
+// ===== Vercel Serverless Proxy =====
+async function callAIProxy(prompt) {
+  const proxyUrl = '/api/generate';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 55000);
+  try {
+    const r = await fetch(proxyUrl, {
+      method: 'POST', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || 'Proxy error: ' + r.status);
+    }
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ===== AI Call Router (Proxy → Groq → OpenRouter) =====
+async function callAI(prompt) {
+  if (state.useServerProxy) {
+    try {
+      return await callAIProxy(prompt);
+    } catch (e) {
+      console.warn('Proxy failed, falling back to direct keys:', e.message);
+    }
+  }
+  const chain = ['groq', 'openrouter'];
+  for (const model of chain) {
+    try {
+      const result = await tryModel(model, prompt, false);
+      if (result) return result;
+    } catch (e) {
+      if (e.code === 'ALL_EXHAUSTED') throw e;
+    }
   }
   throw { code: 'ALL_EXHAUSTED', message: '所有 AI 模型均無法使用', retryAfter: 3 };
 }
 
-// ===== Fast Grading (Groq優先) =====
+// ===== Fast Grading (same chain, separate cursor state from callAI) =====
+let _fastCursor = { groq: 0, openrouter: 0 };
 async function callAIFast(prompt) {
-  let lastErr;
-  const fastChain = ['groq', 'openrouter', 'gemini'];
-  for (const model of fastChain) {
-    while (_keyIdx[model] < KEY_POOLS[model].length) {
-      const idx = _keyIdx[model];
-      const healthKey = model + '_' + idx;
-      const health = keyHealth[healthKey];
-      if (!health || !health.key) { _keyIdx[model]++; continue; }
-      if (health.status === 'cooldown' && Date.now() < health.cooldownUntil) { _keyIdx[model]++; continue; }
-      try {
-        await rateLimit(model);
-        let result;
-        if (model === 'groq') result = await callGroq(prompt, idx);
-        else if (model === 'openrouter') result = await callOpenRouter(prompt, idx);
-        else result = await callGemini(prompt, idx);
-        health.status = 'healthy';
-        health.lastUsed = Date.now();
-        return result;
-      } catch (e) {
-        if (e.status === 429 || e.message?.includes('429')) {
-          health.status = 'cooldown';
-          health.cooldownUntil = Date.now() + 30000;
-          _keyIdx[model]++;
-          lastErr = e;
-          continue;
-        }
-        lastErr = e;
-        _keyIdx[model]++;
-      }
+  if (state.useServerProxy) {
+    try {
+      return await callAIProxy(prompt);
+    } catch (e) {
+      console.warn('Proxy failed for fast grading, falling back');
     }
-    _keyIdx[model] = 0;
   }
-  throw lastErr || new Error('快速批改服務不可用');
-}
-
-// ===== Gemini API =====
-async function callGemini(prompt, keyIdx) {
-  const key = KEY_POOLS.gemini[keyIdx];
-  if (!key) throw new Error('No Gemini key available');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.9, maxOutputTokens: 8192 }
-    })
-  });
-  if (res.status === 429) throw { status: 429, message: 'Gemini quota exceeded' };
-  if (!res.ok) throw new Error('Gemini error: ' + res.status);
-  const data = await res.json();
-  let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-  return JSON.parse(text);
-}
-
-// ===== DeepSeek API =====
-async function callDeepSeek(prompt, keyIdx) {
-  const key = KEY_POOLS.deepseek[keyIdx];
-  if (!key) throw new Error('No DeepSeek key');
-  const url = 'https://api.deepseek.com/v1/chat/completions';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.9,
-      max_tokens: 8192
-    })
-  });
-  if (res.status === 429) throw { status: 429, message: 'DeepSeek quota exceeded' };
-  if (!res.ok) throw new Error('DeepSeek error: ' + res.status);
-  const data = await res.json();
-  let text = data.choices?.[0]?.message?.content || '';
-  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-  return JSON.parse(text);
+  const saved = { ..._keyCursor };
+  _keyCursor = _fastCursor;
+  try {
+    const result = await callAI(prompt);
+    _fastCursor = { ..._keyCursor };
+    return result;
+  } finally {
+    _keyCursor = saved;
+  }
 }
 
 // ===== Groq API =====
@@ -1220,44 +1210,60 @@ async function callGroq(prompt, keyIdx) {
   const key = KEY_POOLS.groq[keyIdx];
   if (!key) throw new Error('No Groq key');
   const url = 'https://api.groq.com/openai/v1/chat/completions';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.9,
-      max_tokens: 8192
-    })
-  });
-  if (res.status === 429) throw { status: 429, message: 'Groq quota exceeded' };
-  if (!res.ok) throw new Error('Groq error: ' + res.status);
-  const data = await res.json();
-  let text = data.choices?.[0]?.message?.content || '';
-  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-  return JSON.parse(text);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST', signal: controller.signal,
+      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.9, max_tokens: 8192
+      })
+    });
+    if (res.status === 429) throw { status: 429, message: 'Groq quota exceeded' };
+    if (!res.ok) throw new Error('Groq error: ' + res.status);
+    const data = await res.json();
+    let text = data.choices?.[0]?.message?.content || '';
+    text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    return JSON.parse(text);
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Groq timeout');
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ===== OpenRouter API =====
 async function callOpenRouter(prompt, keyIdx) {
   const key = KEY_POOLS.openrouter[keyIdx];
   if (!key) throw new Error('No OpenRouter key');
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'HTTP-Referer': window.location.origin, 'X-Title': 'AIQuiz' },
-    body: JSON.stringify({
-      model: 'deepseek/deepseek-chat',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.9,
-      max_tokens: 8192
-    })
-  });
-  if (res.status === 429) throw { status: 429, message: 'OpenRouter quota exceeded' };
-  if (!res.ok) throw new Error('OpenRouter error: ' + res.status);
-  const data = await res.json();
-  let text = data.choices?.[0]?.message?.content || '';
-  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-  return JSON.parse(text);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST', signal: controller.signal,
+      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'HTTP-Referer': window.location.origin, 'X-Title': 'AIQuiz' },
+      body: JSON.stringify({
+        model: 'deepseek/deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.9, max_tokens: 8192
+      })
+    });
+    if (res.status === 429) throw { status: 429, message: 'OpenRouter quota exceeded' };
+    if (!res.ok) throw new Error('OpenRouter error: ' + res.status);
+    const data = await res.json();
+    let text = data.choices?.[0]?.message?.content || '';
+    text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    return JSON.parse(text);
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('OpenRouter timeout');
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ===== Dynamic Prompts (loadable from Firestore admin) =====
@@ -2824,7 +2830,7 @@ async function renderAdmin() {
         <h2 style="cursor:pointer;user-select:none" onclick="toggleApiKeysSection()">🔑 AI API Keys <span class="tag tag-sm tag-blue">${apiTotal} 組</span> <span style="font-size:.75rem;color:var(--gray-400)">${apiKeyExpanded ? '▲ 點擊收合' : '▼ 點擊查看'}</span></h2>
         <div class="card" id="apiKeysCard" style="display:${apiKeyExpanded ? 'block' : 'none'}">
           ${state._apiKeysExpanded ? `
-          ${keySection('gemini', 'Gemini', d.geminiKeys)}
+          ${keySection('gemini', 'Gemini', d.geminiKeys)}<div class="text-xs text-muted" style="margin:-12px 0 16px">⚠️ Gemini 已從輪詢線路移除（太慢），僅供顯示</div>
           ${keySection('groq', 'Groq', d.groqKeys)}
           ${keySection('openrouter', 'OpenRouter', d.openrouterKeys)}
           <div style="margin-top:12px;display:flex;gap:8px">
@@ -2885,6 +2891,7 @@ async function renderAdmin() {
           <div class="toggle-row"><span class="text-sm">排行榜</span><button class="toggle-switch ${d.features?.leaderboard ? 'on' : ''}" onclick="toggleFeature('leaderboard')"></button></div>
           <div class="toggle-row"><span class="text-sm">筆記生成</span><button class="toggle-switch ${d.features?.notes ? 'on' : ''}" onclick="toggleFeature('notes')"></button></div>
           <div class="toggle-row"><span class="text-sm">複習系統</span><button class="toggle-switch ${d.features?.review ? 'on' : ''}" onclick="toggleFeature('review')"></button></div>
+          <div class="toggle-row" style="border-top:1px solid var(--gray-100);padding-top:8px;margin-top:8px"><span class="text-sm">🔄 Server Proxy <span class="text-xs text-muted">(需設 Vercel 環境變數)</span></span><button class="toggle-switch ${state.useServerProxy ? 'on' : ''}" onclick="toggleServerProxy()"></button></div>
           <div style="border-top:1px solid var(--gray-100);margin-top:8px;padding-top:8px">
             <div class="toggle-row"><span class="text-sm" style="color:var(--danger)">🚨 緊急維護模式</span><button class="toggle-switch ${d.maintenanceMode ? 'on' : ''}" style="${d.maintenanceMode ? 'background:var(--danger)' : ''}" onclick="toggleMaintenance()"></button></div>
           </div>
@@ -3044,6 +3051,12 @@ function toggleFeature(key) {
   if (state.adminData?.features) state.adminData.features[key] = !state.adminData.features[key];
   renderAdmin();
 }
+function toggleServerProxy() {
+  state.useServerProxy = !state.useServerProxy;
+  localStorage.setItem('useServerProxy', state.useServerProxy ? '1' : '0');
+  renderAdmin();
+  toast(state.useServerProxy ? '已啟用 Server Proxy' : '已停用 Server Proxy', 'info');
+}
 
 function toggleMaintenance() {
   if (state.adminData) state.adminData.maintenanceMode = !state.adminData.maintenanceMode;
@@ -3057,15 +3070,10 @@ async function saveAdminConfig() {
     await db.collection('admin_config').doc('settings').set(data, { merge: true });
     ['gemini', 'groq', 'openrouter'].forEach(model => {
       const key = model + 'Keys';
-      if (data[key]) {
-        KEY_POOLS[model] = data[key].filter(k => k.trim());
-        KEY_POOLS[model].forEach((k, i) => {
-          const hk = model + '_' + i;
-          if (!keyHealth[hk]) keyHealth[hk] = { key: k, status: 'healthy', cooldownUntil: 0, lastUsed: 0 };
-          else keyHealth[hk].key = k;
-        });
-      }
+      if (data[key]) KEY_POOLS[model] = data[key].filter(k => k.trim());
     });
+    rebuildKeyHealth();
+    _keyCursor = { groq: 0, openrouter: 0 };
     toast('設定已儲存，所有 API Key 已同步', 'success');
   } catch(e) {
     toast('儲存失敗：' + e.message, 'error');
@@ -3082,16 +3090,9 @@ async function syncKeysFromFirestore() {
       const data = doc.data();
       ['gemini', 'groq', 'openrouter'].forEach(model => {
         const key = model + 'Keys';
-        if (data[key] && data[key].length > 0) {
-          KEY_POOLS[model] = data[key].filter(k => k.trim());
-          KEY_POOLS[model].forEach((k, i) => {
-            const hk = model + '_' + i;
-            if (!keyHealth[hk]) keyHealth[hk] = { key: k, status: 'healthy', cooldownUntil: 0, lastUsed: 0 };
-            else keyHealth[hk].key = k;
-          });
-        }
+        if (data[key] && data[key].length > 0) KEY_POOLS[model] = data[key].filter(k => k.trim());
       });
-      // Also fix adminData display: fallback to KEY_POOLS if empty
+      rebuildKeyHealth();
       if (!data.geminiKeys || data.geminiKeys.length === 0) data.geminiKeys = [...KEY_POOLS.gemini];
       if (!data.groqKeys || data.groqKeys.length === 0) data.groqKeys = [...KEY_POOLS.groq];
       if (!data.openrouterKeys || data.openrouterKeys.length === 0) data.openrouterKeys = [...KEY_POOLS.openrouter];
@@ -3216,6 +3217,8 @@ async function saveProfile() {
 /* ============================================================
    INIT（等待課綱載入後啟動）
    ============================================================ */
+if (localStorage.getItem('useServerProxy') === '1') state.useServerProxy = true;
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
