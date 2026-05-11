@@ -4,12 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <meta name="theme-color" content="#0B5EAC">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="AI題庫">
-<link rel="manifest" href="/manifest.json">
-<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/icon-192.svg">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.svg">
 <title>AI 無限題庫</title>
 <script>
 // In-app browser detection
@@ -2364,15 +2365,16 @@ function renderCharts(progressData, radarData) {
         datasets: [{
           label: '熟練度',
           data: radarData.map(d => d.mastery),
-          backgroundColor: 'rgba(37,99,235,.2)',
+          backgroundColor: 'rgba(37,99,235,.08)',
           borderColor: '#2563EB',
-          pointBackgroundColor: '#2563EB',
-          pointBorderColor: '#fff'
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHitRadius: 10
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        scales: { r: { min: 0, max: 100, ticks: { display: false }, grid: { color: 'rgba(0,0,0,.08)' } } },
+        scales: { r: { min: 0, max: 100, ticks: { display: false }, grid: { color: 'rgba(0,0,0,.06)' } } },
         plugins: { legend: { display: false } }
       }
     });
@@ -2489,13 +2491,51 @@ async function renderDiagnosis() {
       total: v.total
     })).sort((a, b) => a.accuracy - b.accuracy);
 
+    // Group units by subject
+    const unitsBySubject = {};
+    unitList.forEach(u => {
+      if (!unitsBySubject[u.subject]) unitsBySubject[u.subject] = [];
+      unitsBySubject[u.subject].push(u);
+    });
+    const subjectOrderAll = ['chinese', 'english', 'math', 'science', 'social', 'history', 'geography', 'civics'];
+    const subjectLabelsAll = { chinese: '國語', english: '英文', math: '數學', science: '生物', social: '社合', history: '歷史', geography: '地理', civics: '公民' };
+    const subjectColors = { chinese: '#0B5EAC', english: '#72A0CB', math: '#16A34A', science: '#D97706', social: '#DC2626', history: '#DC2626', geography: '#8B5CF6', civics: '#EC4899' };
+    const subjectIcons = { chinese: '🇹🇼', english: '🇬🇧', math: '🔢', science: '🧬', social: '🌍', history: '🏛️', geography: '🗺️', civics: '⚖️' };
+
     el.innerHTML = `
       <div class="grid grid-2" style="margin-bottom:20px">
-        <div class="card"><h3 style="font-size:.9375rem;margin-bottom:12px">🎯 五大領域雷達</h3><div class="chart-container" style="height:260px"><canvas id="diagnosisRadar"></canvas></div></div>
+        <div class="card"><h3 style="font-size:.9375rem;margin-bottom:12px">🎯 全科雷達</h3><div class="chart-container" style="height:260px"><canvas id="diagnosisRadar"></canvas></div></div>
         <div class="card"><h3 style="font-size:.9375rem;margin-bottom:12px">📊 各科正確率</h3><div class="chart-container" style="height:260px"><canvas id="diagnosisBar"></canvas></div></div>
       </div>
+      <div style="margin-bottom:16px">
+        <h3 style="font-size:.9375rem;margin-bottom:12px">📖 各科章節分析</h3>
+        ${subjectOrderAll.map(sid => {
+          const units = unitsBySubject[sid];
+          if (!units || units.length === 0) return '';
+          const color = subjectColors[sid] || '#0B5EAC';
+          const avgAcc = Math.round(units.reduce((s, u) => s + u.accuracy * u.total, 0) / Math.max(1, units.reduce((s, u) => s + u.total, 0)));
+          return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${color}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <span style="font-size:1.2rem">${subjectIcons[sid] || '📚'}</span>
+              <span style="font-weight:600;font-size:.9375rem">${subjectLabelsAll[sid] || sid}</span>
+              <span class="tag tag-sm ${avgAcc >= 80 ? 'tag-green' : avgAcc >= 50 ? 'tag-yellow' : 'tag-red'}">${avgAcc}%</span>
+            </div>
+            ${units.map(u => {
+              const lvl = u.accuracy >= 80 ? '精熟' : u.accuracy >= 50 ? '基礎' : '待加強';
+              const c = u.accuracy >= 80 ? 'var(--success)' : u.accuracy >= 50 ? 'var(--warning)' : 'var(--danger)';
+              return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--gray-50)">
+                <div style="flex:1;font-size:.8125rem">${u.unit}</div>
+                <div style="width:80px"><div class="progress-bar" style="height:6px"><div class="progress-fill" style="width:${u.accuracy}%;background:${c};height:6px"></div></div></div>
+                <span class="text-xs" style="width:32px;text-align:right;font-weight:600;color:${c}">${u.accuracy}%</span>
+                <span class="tag tag-sm" style="background:${c}15;color:${c};font-size:.625rem">${lvl}</span>
+                ${u.accuracy < 80 ? `<button class="btn btn-sm btn-outline" style="padding:2px 8px;font-size:.6875rem" onclick="retryWeakUnit('${u.unit}')">複習</button>` : ''}
+              </div>`;
+            }).join('')}
+          </div>`;
+        }).join('')}
+      </div>
       <div class="card" style="margin-bottom:16px">
-        <h3 style="font-size:.9375rem;margin-bottom:12px">📖 章節診斷</h3>
+        <h3 style="font-size:.9375rem;margin-bottom:12px">📖 章節診斷（全部）</h3>
         ${unitList.length > 0 ? unitList.map(u => {
           const level = u.accuracy >= 80 ? '精熟' : u.accuracy >= 50 ? '基礎' : '待加強';
           const color = u.accuracy >= 80 ? 'var(--success)' : u.accuracy >= 50 ? 'var(--warning)' : 'var(--danger)';
@@ -2547,16 +2587,16 @@ function renderDiagnosisCharts(radarData) {
         datasets: [{
           label: '正確率',
           data: radarData.map(d => d.accuracy),
-          backgroundColor: 'rgba(11,94,172,.2)',
+          backgroundColor: 'rgba(11,94,172,.06)',
           borderColor: '#0B5EAC',
-          pointBackgroundColor: '#0B5EAC',
-          pointBorderColor: '#fff',
-          pointRadius: 5
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHitRadius: 10
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        scales: { r: { min: 0, max: 100, ticks: { stepSize: 20, callback: v => v+'%' }, grid: { color: 'rgba(0,0,0,.08)' } } },
+        scales: { r: { min: 0, max: 100, ticks: { stepSize: 20, callback: v => v+'%' }, grid: { color: 'rgba(0,0,0,.06)' } } },
         plugins: { legend: { display: false } }
       }
     });
@@ -2664,60 +2704,86 @@ function toggleNote(id) {
 
 async function generateNote() {
   if (!state.user) { toast('請先登入', 'error'); return; }
-  loading(true);
-  try {
-    // Fetch recent wrong answers
-    const snap = await db.collection('quiz_answers')
-      .where('userId', '==', state.user.uid)
-      .limit(100)
-      .get();
-    const answers = [];
-    snap.forEach(d => answers.push(d.data()));
-    answers.sort((a, b) => ((b.answeredAt||'') + '').localeCompare((a.answeredAt||'') + ''));
-    answers.splice(50);
 
-    if (answers.length === 0) {
-      toast('尚無答題紀錄，請先完成練習', 'error');
-      loading(false);
-      return;
-    }
+  // Use the current session if in reviewing mode, else fetch latest from DB
+  let session = null;
+  let sessionQA = [];
 
-    const wrong = answers.filter(a => !a.isCorrect);
-    const correct = answers.filter(a => a.isCorrect);
-    const acc = accuracy(correct.length, answers.length);
-
-    // Build tag stats
-    const tagStats = {};
-    answers.forEach(a => {
-      (a.knowledgeTags || []).forEach(t => {
-        if (!tagStats[t]) tagStats[t] = { correct: 0, total: 0 };
-        tagStats[t].total++;
-        if (a.isCorrect) tagStats[t].correct++;
+  if (state.quizSession && state.quizMode === 'reviewing') {
+    session = state.quizSession;
+    session.questions.forEach(q => {
+      const ua = state.quizAnswers[q.id] || '';
+      sessionQA.push({
+        content: q.content, options: q.options, explanation: q.explanation,
+        userAnswer: ua,
+        correctAnswer: q.correctAnswer,
+        isCorrect: ua.trim().toLowerCase() === (q.correctAnswer || '').trim().toLowerCase(),
+        knowledgeTags: q.knowledgeTags || []
       });
     });
-    const weakTags = Object.entries(tagStats).filter(([_,v]) => v.correct/v.total < 0.7).map(([t]) => t);
+    } else {
+    loading(true);
+    try {
+      const snap = await db.collection('quiz_sessions')
+        .where('userId', '==', state.user.uid)
+        .get();
+      if (snap.empty) { toast('尚無答題記錄', 'error'); loading(false); return; }
+      const all = []; snap.forEach(d => all.push({ id: d.id, ...d.data() }));
+      all.sort((a, b) => ((b.completedAt||'') + '').localeCompare((a.completedAt||'') + ''));
+      session = all[0];
+      const ansMap = session.answers || {};
+      (session.questions || []).forEach(q => {
+        const ua = ansMap[q.id] || '';
+        sessionQA.push({
+          content: q.content, options: q.options, explanation: q.explanation,
+          userAnswer: ua,
+          correctAnswer: q.correctAnswer,
+          isCorrect: ua.trim().toLowerCase() === (q.correctAnswer || '').trim().toLowerCase(),
+          knowledgeTags: q.knowledgeTags || []
+        });
+      });
+    } catch(e) { toast('讀取最近練習失敗', 'error'); loading(false); return; }
+  }
 
-    const prompt = `${NOTE_PROMPT_PREFIX}
+  if (sessionQA.length === 0) { toast('無題目資料', 'error'); loading(false); return; }
+
+  const wrong = sessionQA.filter(a => !a.isCorrect);
+  const correct = sessionQA.filter(a => a.isCorrect);
+  const total = sessionQA.length;
+  const acc = accuracy(correct.length, total);
+  const topic = session.topic || '未命名練習';
+
+  const prompt = `${NOTE_PROMPT_PREFIX}
+
+本次練習主題：${topic}
+
 答題統計：
-總題數：${answers.length}，正確：${correct.length}，錯誤：${wrong.length}，正確率：${acc}%
+總題數：${total}，正確：${correct.length}，錯誤：${wrong.length}，正確率：${acc}%
 
-錯題：
-${wrong.slice(0,10).map(a => `- 題目ID:${a.questionId}，你的答案:${a.userAnswer}，正確答案:${a.correctAnswer}，知識點:${(a.knowledgeTags||[]).join(',')}`).join('\n')}
+錯題詳情：
+${wrong.slice(0, 10).map(a => `- 題目：${cleanText(a.content || '')}
+  你的答案：${a.userAnswer}
+  正確答案：${a.correctAnswer}
+  解析：${cleanText(a.explanation || '')}
+  知識點：${(a.knowledgeTags||[]).join(', ')}`).join('\n')}
 
-弱項知識點：${weakTags.join(', ') || '無明顯弱項'}
+正確題目知識點：
+${correct.slice(0, 5).map(a => `- ${cleanText(a.content || '')} → ${(a.knowledgeTags||[]).join(', ')}`).join('\n')}
 
-請輸出純JSON（不要Markdown標記）：`;
+請根據本次練習「${topic}」的錯題產生對應章節的重點整理筆記，輸出純JSON（不要Markdown標記）：`;
 
+  loading(true);
+  try {
     const noteResult = await callAIFast(prompt);
     const note = {
       userId: state.user.uid,
-      title: noteResult.title || '學習筆記',
+      title: noteResult.title || topic + ' 學習筆記',
       content: noteResult.content || '無內容',
       knowledgeTags: noteResult.knowledgeTags || [],
+      sessionTopic: topic,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
-
-    const ref = await db.collection('notes').add(note);
+    await db.collection('notes').add(note);
     toast('筆記生成完成！', 'success');
     renderNotes();
   } catch(e) {
@@ -3290,9 +3356,9 @@ async function saveProfile() {
    ============================================================ */
 if (localStorage.getItem('useServerProxy') === '1') state.useServerProxy = true;
 
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   });
 }
 
