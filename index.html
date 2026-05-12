@@ -1509,24 +1509,24 @@ async function generateBank() {
     _bankGenState.subjectProgress[subject.id] = { done: existing, total: BANK_CONFIG.questionsPerSubject, status: '生成中' };
     updateBankUI();
 
+    let subjectAdded = 0;
     for (let b = 0; b < batches; b++) {
       if (!_bankGenState.running) break;
       const count = Math.min(BANK_CONFIG.batchSize, needed - b * BANK_CONFIG.batchSize);
-      _bankGenState.subjectProgress[subject.id].status = `生成中 (${b * BANK_CONFIG.batchSize + existing}/${BANK_CONFIG.questionsPerSubject})`;
+      _bankGenState.subjectProgress[subject.id].status = `生成中 (${existing + subjectAdded}/${BANK_CONFIG.questionsPerSubject})`;
       updateBankUI();
 
       const unitNames = (subject.units || []).map(u => u.label).join('、') || subject.label;
       const prompt = `${QUIZ_SYSTEM_PROMPT}\n${subject.id === 'english' ? QUIZ_ENGLISH_RULES : QUIZ_CHINESE_RULES}\n\n科目：${subject.label}\n範圍：${unitNames}\n題數：${count}\n請平均涵蓋所有單元，每一題都變換不同知識點，生成 JSON：`;
 
+      let batchOk = false;
+      // Try main model first
       try {
         const result = await callNVIDIA(prompt, false);
         if (result && result.questions && result.questions.length > 0) {
           const added = await saveQuestionsToBank(subject.id, result.questions);
-          totalDone += added;
-          _bankGenState.subjectProgress[subject.id].done = existing + (b + 1) * BANK_CONFIG.batchSize;
-          _bankGenState.progress = totalDone;
-          _bankGenState.total = totalNeeded;
-          updateBankUI();
+          subjectAdded += added; totalDone += added;
+          batchOk = true;
         }
       } catch (e) {
         if (e.code === 'RATE_LIMITED') {
@@ -1535,26 +1535,30 @@ async function generateBank() {
             const result = await callNVIDIA(prompt, true);
             if (result && result.questions && result.questions.length > 0) {
               const added = await saveQuestionsToBank(subject.id, result.questions);
-              totalDone += added;
-              _bankGenState.subjectProgress[subject.id].done = existing + (b + 1) * BANK_CONFIG.batchSize;
-              _bankGenState.progress = totalDone;
-              _bankGenState.total = totalNeeded;
-              updateBankUI();
+              subjectAdded += added; totalDone += added;
+              batchOk = true;
             }
           } catch (e2) {
-            console.warn('Batch batch failed for', subject.id, e2);
-            await delay(3000);
-            b--; // retry this batch
-            continue;
+            console.warn('Batch failed for', subject.id, e2);
           }
         } else {
-          console.warn('Batch generate error for', subject.id, e);
-          await delay(2000);
+          console.warn('Batch generate error for', subject.id, e.message);
         }
       }
+      // Retry batch if nothing was generated
+      if (!batchOk) {
+        await delay(3000);
+        b--;
+        continue;
+      }
+      _bankGenState.subjectProgress[subject.id].done = existing + subjectAdded;
+      _bankGenState.progress = totalDone;
+      _bankGenState.total = totalNeeded;
+      updateBankUI();
       await delay(minInterval);
     }
-    _bankGenState.subjectProgress[subject.id].status = _bankGenState.running ? '完成' : '中斷';
+    _bankGenState.subjectProgress[subject.id].done = existing + subjectAdded;
+    _bankGenState.subjectProgress[subject.id].status = subjectAdded > 0 ? '完成' : '失敗（無題目生成）';
     updateBankUI();
   }
 
@@ -1584,7 +1588,7 @@ function updateBankUI() {
     const pct = Math.round(sp.done / sp.total * 100);
     return `<div class="text-xs" style="padding:4px 0">
       ${s.icon} ${s.label}:
-      <span style="color:${sp.status === '完成' ? 'var(--success)' : sp.status === '充足' ? 'var(--gray-400)' : 'var(--primary)'}">${sp.done}/${sp.total}</span>
+      <span style="color:${sp.status === '完成' ? 'var(--success)' : sp.status === '充足' ? 'var(--gray-400)' : sp.status.includes('失敗') ? 'var(--danger)' : 'var(--primary)'}">${sp.done}/${sp.total}</span>
       <span class="text-muted">(${sp.status})</span>
       <div style="height:4px;background:var(--gray-100);border-radius:4px;margin-top:2px">
         <div style="height:100%;width:${pct}%;background:var(--primary);border-radius:4px;transition:width .3s"></div>
