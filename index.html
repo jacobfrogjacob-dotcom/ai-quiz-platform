@@ -1199,7 +1199,7 @@ async function tryModel(model, prompt, isFast) {
   return null;
 }
 
-// ===== Vercel Serverless Proxy =====
+// ===== Vercel Serverless Proxies =====
 async function callAIProxy(prompt) {
   const proxyUrl = '/api/generate';
   const controller = new AbortController();
@@ -1220,15 +1220,51 @@ async function callAIProxy(prompt) {
   }
 }
 
-// ===== AI Call Router (Proxy → Groq → OpenRouter) =====
+// ===== NVIDIA API Proxy (via /api/nvidia, fallback /api/nvidia-fast) =====
+async function callNVIDIA(prompt, fast) {
+  const url = fast ? '/api/nvidia-fast' : '/api/nvidia';
+  const timeout = fast ? 35000 : 60000;
+  const apiKey = state.adminData?.nvidiaApiKey || '';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const r = await fetch(url, {
+      method: 'POST', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, apiKey })
+    });
+    if (r.status === 429) throw { code: 'RATE_LIMITED', retryType: fast ? 'fast' : 'main' };
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || url + ' error: ' + r.status);
+    }
+    return await r.json();
+  } catch (e) {
+    if (e.code === 'RATE_LIMITED') throw e;
+    if (e.name === 'AbortError') throw new Error('NVIDIA 連線超時');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ===== AI Call Router (NVIDIA → NVIDIA-fast → Proxy → Groq → OpenRouter) =====
 async function callAI(prompt) {
+  // 1) Try main NVIDIA
+  try { return await callNVIDIA(prompt, false); } catch (e) {
+    if (e.code !== 'RATE_LIMITED') console.warn('NVIDIA failed:', e.message);
+  }
+  // 2) Try fast NVIDIA (備援)
+  try { return await callNVIDIA(prompt, true); } catch (e) {
+    if (e.code !== 'RATE_LIMITED') console.warn('NVIDIA fast failed:', e.message);
+  }
+  // 3) Try Server Proxy (if enabled)
   if (state.useServerProxy) {
-    try {
-      return await callAIProxy(prompt);
-    } catch (e) {
-      console.warn('Proxy failed, falling back to direct keys:', e.message);
+    try { return await callAIProxy(prompt); } catch (e) {
+      console.warn('Proxy failed:', e.message);
     }
   }
+  // 4) Fallback to direct keys
   const chain = ['groq', 'openrouter'];
   let lastErr = null;
   for (const model of chain) {
@@ -1244,16 +1280,24 @@ async function callAI(prompt) {
   throw { code: 'ALL_EXHAUSTED', message: '所有 AI 模型均無法使用', retryAfter: 3 };
 }
 
-// ===== Fast Grading (same chain, separate cursor state from callAI) =====
+// ===== Fast Grading (NVIDIA-fast first, then fallback chain) =====
 let _fastCursor = { groq: 0, openrouter: 0 };
 async function callAIFast(prompt) {
+  // Try NVIDIA fast endpoint first
+  try { return await callNVIDIA(prompt, true); } catch (e) {
+    if (e.code !== 'RATE_LIMITED') console.warn('NVIDIA fast failed:', e.message);
+  }
+  // Try NVIDIA main 
+  try { return await callNVIDIA(prompt, false); } catch (e) {
+    if (e.code !== 'RATE_LIMITED') console.warn('NVIDIA main failed:', e.message);
+  }
+  // Fallback to proxy
   if (state.useServerProxy) {
-    try {
-      return await callAIProxy(prompt);
-    } catch (e) {
+    try { return await callAIProxy(prompt); } catch (e) {
       console.warn('Proxy failed for fast grading, falling back');
     }
   }
+  // Fallback to direct keys with separate cursor
   const saved = { ..._keyCursor };
   _keyCursor = _fastCursor;
   try {
@@ -1375,11 +1419,191 @@ async function loadPrompts() {
   } catch(e) { /* use defaults */ }
 }
 
+// ===== Question Bank (Firestore 10k+ pre-generated questions) =====
+async function countQuestionsInBank(subjectId) {
+  try {
+    const snap = await db.collection('question_bank')
+      .where('subjectId', '==', subjectId)
+      .get();
+    return snap.size;
+  } catch(e) { return 0; }
+}
+
+async function getQuestionsFromBank(subjectId, count) {
+  try {
+    const snap = await db.collection('question_bank')
+      .where('subjectId', '==', subjectId)
+      .get();
+    const all = [];
+    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
+    return shuffle(all).slice(0, count);
+  } catch(e) { return []; }
+}
+
+async function saveQuestionsToBank(subjectId, questions) {
+  const batch = db.batch();
+  let added = 0;
+  for (const q of questions) {
+    const ref = db.collection('question_bank').doc();
+    batch.set(ref, {
+      subjectId,
+      type: 'multiple-choice',
+      content: q.content,
+      options: q.options || [],
+      correctAnswer: q.correctAnswer || '',
+      explanation: q.explanation || '',
+      knowledgeTags: q.knowledgeTags || [],
+      difficulty: q.difficulty || 'medium',
+      batchTimestamp: firebase.firestore.FieldValue.serverTimestamp(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    added++;
+  }
+  if (added > 0) await batch.commit();
+  return added;
+}
+
 async function generateQuizFromAI(topic, subjectId, count) {
+  // Try question bank first
+  const bankQ = await getQuestionsFromBank(subjectId, count);
+  if (bankQ.length >= count) return { questions: bankQ };
+
+  // Fall back to AI generation
   const isEnglish = subjectId === 'english';
   const langRule = isEnglish ? QUIZ_ENGLISH_RULES : QUIZ_CHINESE_RULES;
   const prompt = `${QUIZ_SYSTEM_PROMPT}\n${langRule}\n\n主題：${topic || '一般知識'}\n題數：${count || 10}\n請務必根據「${topic}」範圍出題（改變數字、人名、情境），生成 JSON：`;
   return await callAI(prompt);
+}
+
+// ===== Batch Question Bank Generator (40 RPM, all 7 subjects) =====
+const BANK_CONFIG = { questionsPerSubject: 200, batchSize: 10, rpm: 38 };
+let _bankGenState = { running: false, subject: '', progress: 0, total: 0, subjectProgress: {} };
+
+async function generateBank() {
+  if (_bankGenState.running) { toast('題庫生成已在執行中', 'warning'); return; }
+  if (!state.user || state.profile?.role !== 'admin') { toast('僅管理員可操作', 'error'); return; }
+  if (!curriculumData || !curriculumData.subjects) { toast('課綱資料未載入', 'error'); return; }
+
+  _bankGenState = {
+    running: true, subject: '', progress: 0, total: 0,
+    subjectProgress: {}
+  };
+  updateBankUI();
+
+  const subjects = curriculumData.subjects;
+  const totalNeeded = subjects.length * BANK_CONFIG.questionsPerSubject;
+  let totalDone = 0;
+  const minInterval = Math.ceil(60000 / BANK_CONFIG.rpm);
+
+  for (const subject of subjects) {
+    if (!_bankGenState.running) break;
+    const existing = await countQuestionsInBank(subject.id);
+    const needed = BANK_CONFIG.questionsPerSubject - existing;
+    if (needed <= 0) {
+      _bankGenState.subjectProgress[subject.id] = { done: existing, total: BANK_CONFIG.questionsPerSubject, status: '充足' };
+      updateBankUI();
+      continue;
+    }
+    const batches = Math.ceil(needed / BANK_CONFIG.batchSize);
+    _bankGenState.subject = subject.id;
+    _bankGenState.subjectProgress[subject.id] = { done: existing, total: BANK_CONFIG.questionsPerSubject, status: '生成中' };
+    updateBankUI();
+
+    for (let b = 0; b < batches; b++) {
+      if (!_bankGenState.running) break;
+      const count = Math.min(BANK_CONFIG.batchSize, needed - b * BANK_CONFIG.batchSize);
+      _bankGenState.subjectProgress[subject.id].status = `生成中 (${b * BANK_CONFIG.batchSize + existing}/${BANK_CONFIG.questionsPerSubject})`;
+      updateBankUI();
+
+      const unitNames = (subject.units || []).map(u => u.label).join('、') || subject.label;
+      const prompt = `${QUIZ_SYSTEM_PROMPT}\n${subject.id === 'english' ? QUIZ_ENGLISH_RULES : QUIZ_CHINESE_RULES}\n\n科目：${subject.label}\n範圍：${unitNames}\n題數：${count}\n請平均涵蓋所有單元，每一題都變換不同知識點，生成 JSON：`;
+
+      try {
+        const result = await callNVIDIA(prompt, false);
+        if (result && result.questions && result.questions.length > 0) {
+          const added = await saveQuestionsToBank(subject.id, result.questions);
+          totalDone += added;
+          _bankGenState.subjectProgress[subject.id].done = existing + (b + 1) * BANK_CONFIG.batchSize;
+          _bankGenState.progress = totalDone;
+          _bankGenState.total = totalNeeded;
+          updateBankUI();
+        }
+      } catch (e) {
+        if (e.code === 'RATE_LIMITED') {
+          // Try fast model as backup
+          try {
+            const result = await callNVIDIA(prompt, true);
+            if (result && result.questions && result.questions.length > 0) {
+              const added = await saveQuestionsToBank(subject.id, result.questions);
+              totalDone += added;
+              _bankGenState.subjectProgress[subject.id].done = existing + (b + 1) * BANK_CONFIG.batchSize;
+              _bankGenState.progress = totalDone;
+              _bankGenState.total = totalNeeded;
+              updateBankUI();
+            }
+          } catch (e2) {
+            console.warn('Batch batch failed for', subject.id, e2);
+            await delay(3000);
+            b--; // retry this batch
+            continue;
+          }
+        } else {
+          console.warn('Batch generate error for', subject.id, e);
+          await delay(2000);
+        }
+      }
+      await delay(minInterval);
+    }
+    _bankGenState.subjectProgress[subject.id].status = _bankGenState.running ? '完成' : '中斷';
+    updateBankUI();
+  }
+
+  _bankGenState.running = false;
+  _bankGenState.subject = '';
+  updateBankUI();
+  toast(`題庫生成完成！共新增 ${totalDone} 題`, 'success');
+}
+
+function stopBankGeneration() {
+  _bankGenState.running = false;
+  toast('題庫生成已停止', 'info');
+}
+
+function updateBankUI() {
+  const el = $('bankProgress');
+  if (!el) return;
+  if (!_bankGenState.running && _bankGenState.total === 0) {
+    el.innerHTML = '';
+    return;
+  }
+  const totalPct = _bankGenState.total > 0 ? Math.round(_bankGenState.progress / _bankGenState.total * 100) : 0;
+  const subjects = curriculumData?.subjects || [];
+  const rows = subjects.map(s => {
+    const sp = _bankGenState.subjectProgress[s.id];
+    if (!sp) return `<div class="text-xs" style="padding:4px 0">${s.icon} ${s.label}: <span class="text-muted">讀取中...</span></div>`;
+    const pct = Math.round(sp.done / sp.total * 100);
+    return `<div class="text-xs" style="padding:4px 0">
+      ${s.icon} ${s.label}:
+      <span style="color:${sp.status === '完成' ? 'var(--success)' : sp.status === '充足' ? 'var(--gray-400)' : 'var(--primary)'}">${sp.done}/${sp.total}</span>
+      <span class="text-muted">(${sp.status})</span>
+      <div style="height:4px;background:var(--gray-100);border-radius:4px;margin-top:2px">
+        <div style="height:100%;width:${pct}%;background:var(--primary);border-radius:4px;transition:width .3s"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-weight:600">📦 題庫生成進度 ${totalPct}%</span>
+        ${_bankGenState.running ? `<button class="btn btn-sm" style="background:var(--danger);color:#fff;border:none" onclick="stopBankGeneration()">停止</button>` : ''}
+      </div>
+      <div style="height:8px;background:var(--gray-100);border-radius:8px;margin-bottom:8px">
+        <div style="height:100%;width:${totalPct}%;background:${_bankGenState.running ? 'var(--primary)' : 'var(--success)'};border-radius:8px;transition:width .5s"></div>
+      </div>
+      ${_bankGenState.running ? `<div class="text-xs text-muted mb-2">當前：${_bankGenState.subject || '-'} · 每分鐘 ${BANK_CONFIG.rpm} 次請求（符合 NVIDIA 限制）</div>` : ''}
+      <div>${rows}</div>
+    </div>`;
 }
 
 // ===== Error Analysis =====
@@ -2986,7 +3210,7 @@ async function renderAdmin() {
   try {
     // Get admin config from Firestore (only on initial load, preserve in-memory edits)
     if (!state.adminData) {
-      let config = { geminiKeys: [], groqKeys: [], openrouterKeys: [], features: { leaderboard: true, notes: true, review: true }, maintenanceMode: false };
+      let config = { geminiKeys: [], groqKeys: [], openrouterKeys: [], nvidiaApiKey: '', features: { leaderboard: true, notes: true, review: true }, maintenanceMode: false };
       try {
         const doc = await db.collection('admin_config').doc('settings').get();
         if (doc.exists) config = doc.data();
@@ -3110,7 +3334,7 @@ async function renderAdmin() {
           <div class="toggle-row"><span class="text-sm">排行榜</span><button class="toggle-switch ${d.features?.leaderboard ? 'on' : ''}" onclick="toggleFeature('leaderboard')"></button></div>
           <div class="toggle-row"><span class="text-sm">筆記生成</span><button class="toggle-switch ${d.features?.notes ? 'on' : ''}" onclick="toggleFeature('notes')"></button></div>
           <div class="toggle-row"><span class="text-sm">複習系統</span><button class="toggle-switch ${d.features?.review ? 'on' : ''}" onclick="toggleFeature('review')"></button></div>
-          <div class="toggle-row" style="border-top:1px solid var(--gray-100);padding-top:8px;margin-top:8px"><span class="text-sm">🔄 Server Proxy <span class="text-xs text-muted">(需設 Vercel 環境變數)</span></span><button class="toggle-switch ${state.useServerProxy ? 'on' : ''}" onclick="toggleServerProxy()"></button></div>
+          <div class="toggle-row" style="border-top:1px solid var(--gray-100);padding-top:8px;margin-top:8px"><span class="text-sm">🔄 Server Proxy <span class="text-xs text-muted">(啟用時使用 /api/generate 作為最後備援)</span></span><button class="toggle-switch ${state.useServerProxy ? 'on' : ''}" onclick="toggleServerProxy()"></button></div>
           <div style="border-top:1px solid var(--gray-100);margin-top:8px;padding-top:8px">
             <div class="toggle-row"><span class="text-sm" style="color:var(--danger)">🚨 緊急維護模式</span><button class="toggle-switch ${d.maintenanceMode ? 'on' : ''}" style="${d.maintenanceMode ? 'background:var(--danger)' : ''}" onclick="toggleMaintenance()"></button></div>
           </div>
@@ -3173,6 +3397,29 @@ async function renderAdmin() {
       </div>
 
       <div class="admin-section">
+        <h2>📦 題庫管理（10k+ 預生成）</h2>
+        <div class="card">
+          <p class="text-sm mb-2">批次生成 ${curriculumData?.subjects?.length || 7} 科 × ${BANK_CONFIG.questionsPerSubject} 題 = ${(curriculumData?.subjects?.length || 7) * BANK_CONFIG.questionsPerSubject} 題題庫</p>
+          <div class="input-group" style="margin-bottom:10px">
+            <label class="input-label">NVIDIA API Key <span class="text-xs text-muted">（<a href="https://build.nvidia.com" target="_blank">build.nvidia.com</a> 產生 <code>nvapi-...</code>）</span></label>
+            <div style="display:flex;gap:6px">
+              <input class="api-key-input" type="text" id="nvidiaApiKeyInput" value="${d.nvidiaApiKey ? '•'.repeat(Math.min(40, Math.max(20, d.nvidiaApiKey.length))) : ''}" placeholder="nvapi-..." style="margin-bottom:0;font-family:monospace;flex:1" onchange="if(this.dataset.unmasked){state.adminData.nvidiaApiKey=this.value}">
+              <button class="btn btn-ghost btn-sm" onclick="toggleNvidiaKey()" style="padding:2px 8px;font-size:1rem" title="顯示/隱藏">👁️</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+            <button class="btn btn-primary" onclick="generateBank()" id="bankGenBtn">▶ 開始生成題庫</button>
+            <button class="btn btn-secondary" onclick="testNvidiaAPI()">🔍 測試連線</button>
+            <button class="btn btn-outline" onclick="saveNvidiaKey()">💾 儲存 Key</button>
+            <button class="btn btn-ghost" onclick="loadBankStats()">🔄 統計</button>
+          </div>
+          <div id="nvidiaTestResult" class="text-xs mt-2"></div>
+          <div id="bankStats"></div>
+          <div id="bankProgress"></div>
+        </div>
+      </div>
+
+      <div class="admin-section">
         <h2>📊 系統概覽</h2>
         <div class="grid grid-2">
           <div class="card stat-card"><div class="stat-value">${userCount}</div><div class="stat-label">註冊用戶</div></div>
@@ -3215,6 +3462,9 @@ async function renderAdmin() {
       });
       (document.getElementById('userTableBody') || {}).innerHTML = rows.length > 0 ? rows.join('') : '<tr><td colspan="3" class="text-muted text-sm">尚無用戶</td></tr>';
     } catch(e) { /* ignore */ }
+
+    // Load bank stats after render
+    loadBankStats();
 
   } catch(e) {
     console.error(e);
@@ -3436,6 +3686,110 @@ async function saveAdminConfig() {
     toast('儲存失敗：' + e.message, 'error');
   } finally {
     loading(false);
+  }
+}
+
+async function loadBankStats() {
+  const el = $('bankStats');
+  if (!el) return;
+  el.innerHTML = '<div class="text-xs text-muted">載入中...</div>';
+  try {
+    const snap = await db.collection('question_bank').get();
+    const counts = {};
+    snap.forEach(d => {
+      const s = d.data().subjectId || 'unknown';
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    const subjects = curriculumData?.subjects || [];
+    const rows = subjects.map(s => {
+      const c = counts[s.id] || 0;
+      const pct = Math.round(c / BANK_CONFIG.questionsPerSubject * 100);
+      const color = c >= BANK_CONFIG.questionsPerSubject ? 'var(--success)' : c > 0 ? 'var(--warning)' : 'var(--gray-400)';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0">
+        <span style="width:60px;font-size:.8125rem">${s.icon} ${s.label}</span>
+        <div style="flex:1;height:6px;background:var(--gray-100);border-radius:6px">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:6px;transition:width .5s"></div>
+        </div>
+        <span style="font-size:.75rem;font-weight:600;color:${color};min-width:60px;text-align:right">${c}/${BANK_CONFIG.questionsPerSubject}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = `<div class="text-sm" style="margin-top:8px;padding:8px 0;border-top:1px solid var(--gray-100)">
+      <div style="font-weight:600;margin-bottom:6px">📊 題庫統計（總計 ${snap.size} 題）</div>
+      ${rows}
+    </div>`;
+  } catch(e) {
+    el.innerHTML = '<div class="text-xs text-muted">載入統計失敗</div>';
+  }
+}
+
+function toggleNvidiaKey() {
+  const inp = $('nvidiaApiKeyInput');
+  if (!inp) return;
+  if (inp.dataset.unmasked) {
+    const k = state.adminData?.nvidiaApiKey || '';
+    inp.value = '•'.repeat(Math.min(40, Math.max(20, k.length)));
+    inp.dataset.unmasked = '';
+  } else {
+    inp.value = state.adminData?.nvidiaApiKey || '';
+    inp.dataset.unmasked = '1';
+    inp.focus();
+  }
+}
+
+async function saveNvidiaKey() {
+  const inp = $('nvidiaApiKeyInput');
+  const key = (state.adminData?.nvidiaApiKey || '').trim();
+  if (!key) { toast('請先輸入 NVIDIA API Key', 'warning'); return; }
+  loading(true);
+  try {
+    await db.collection('admin_config').doc('settings').set(
+      { nvidiaApiKey: key },
+      { merge: true }
+    );
+    toast('NVIDIA Key 已儲存到 Firestore', 'success');
+  } catch(e) {
+    toast('儲存失敗：' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function testNvidiaAPI() {
+  const el = $('nvidiaTestResult');
+  if (el) el.innerHTML = '🔄 測試 /api/nvidia...';
+  const ak = state.adminData?.nvidiaApiKey || '';
+  const test = async (url) => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 20000);
+    try {
+      const r = await fetch(url, {
+        method: 'POST', signal: c.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Say "ok" as JSON: {"status":"ok"}', apiKey: ak })
+      });
+      return r;
+    } finally { clearTimeout(t); }
+  };
+  // Test main
+  let r = await test('/api/nvidia');
+  if (r.ok) {
+    if (el) el.innerHTML = '✅ /api/nvidia 正常';
+    // Test fast
+    r = await test('/api/nvidia-fast');
+    if (r.ok) {
+      if (el) el.innerHTML = '✅ /api/nvidia + /api/nvidia-fast 均正常';
+      toast('NVIDIA API 測試通過', 'success');
+    } else {
+      if (el) el.innerHTML = '✅ /api/nvidia 正常，❌ /api/nvidia-fast ' + r.status;
+      toast('NVIDIA fast 異常', 'warning');
+    }
+  } else if (r.status === 429) {
+    if (el) el.innerHTML = '⏳ NVIDIA API 限流 (429)，請稍後重試';
+    toast('NVIDIA 限流', 'info');
+  } else {
+    const err = await r.json().catch(() => ({}));
+    if (el) el.innerHTML = '❌ /api/nvidia: ' + (err.error || r.status);
+    toast('NVIDIA API 測試失敗', 'error');
   }
 }
 
