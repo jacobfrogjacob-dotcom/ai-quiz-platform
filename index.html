@@ -2571,24 +2571,22 @@ async function renderDashboard() {
       accuracy: s.totalQuestions > 0 ? accuracy(s.score, s.totalQuestions) : 0
     }));
 
-    // Knowledge tags from answers
-    const answersSnap = await db.collection('quiz_answers')
-      .where('userId', '==', state.user.uid)
-      .limit(200)
-      .get();
-    const tagMap = {};
-    answersSnap.forEach(d => {
-      const a = d.data();
-      (a.knowledgeTags || []).forEach(t => {
-        if (!tagMap[t]) tagMap[t] = { correct: 0, total: 0 };
-        tagMap[t].total++;
-        if (a.isCorrect) tagMap[t].correct++;
-      });
+    // Per-subject stats from sessions + answers (7 fixed subjects)
+    const subjStats = {};
+    SUBJECT_ORDER_7.forEach(id => { subjStats[id] = { correct: 0, total: 0 }; });
+    allSessions.forEach(s => {
+      const topic = s.topic || '';
+      for (const id of SUBJECT_ORDER_7) {
+        if (topic.includes(SUBJECT_LABELS_7[id]) || topic.includes(id)) {
+          subjStats[id].total += s.totalQuestions || 0;
+          subjStats[id].correct += s.score || 0;
+        }
+      }
     });
-    const radarData = Object.entries(tagMap).map(([tag, v]) => ({
-      tag: tag.replace('#',''),
-      mastery: v.total > 0 ? Math.round(v.correct/v.total*100) : 0
-    }));
+    const radarData = SUBJECT_ORDER_7.map(id => {
+      const st = subjStats[id] || { correct: 0, total: 0 };
+      return { tag: SUBJECT_LABELS_7[id], mastery: st.total > 0 ? Math.round(st.correct/st.total*100) : 0 };
+    });
 
     const recentHtml = sessions.slice(0, 8).map(s =>
       `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--gray-100)">
@@ -2788,12 +2786,15 @@ async function renderDiagnosis() {
       });
     });
 
-    const subjectLabels = { chinese: '國語', english: '英文', math: '數學', science: '生物', social: '社合' };
-    const subjectOrder = ['chinese', 'english', 'math', 'science', 'social'];
-    const radarData = subjectOrder.map(id => {
+    const radarData = SUBJECT_ORDER_7.map(id => {
       const st = subjectStats[id] || { correct: 0, total: 0 };
+      // Also merge in stats from social (old grouping) into individual subjects
+      if (id === 'civics' && subjectStats['social']) {
+        st.correct += subjectStats['social'].correct || 0;
+        st.total += subjectStats['social'].total || 0;
+      }
       const acc = st.total > 0 ? Math.round(st.correct / st.total * 100) : 0;
-      return { subject: subjectLabels[id] || id, accuracy: acc };
+      return { subject: SUBJECT_LABELS_7[id], accuracy: acc, id };
     });
 
     const unitList = Object.entries(unitStats).map(([key, v]) => ({
@@ -2810,10 +2811,7 @@ async function renderDiagnosis() {
       if (!unitsBySubject[u.subject]) unitsBySubject[u.subject] = [];
       unitsBySubject[u.subject].push(u);
     });
-    const subjectOrderAll = ['chinese', 'english', 'math', 'science', 'social', 'history', 'geography', 'civics'];
-    const subjectLabelsAll = { chinese: '國語', english: '英文', math: '數學', science: '生物', social: '社合', history: '歷史', geography: '地理', civics: '公民' };
-    const subjectColors = { chinese: '#0B5EAC', english: '#72A0CB', math: '#16A34A', science: '#D97706', social: '#DC2626', history: '#DC2626', geography: '#8B5CF6', civics: '#EC4899' };
-    const subjectIcons = { chinese: '🇹🇼', english: '🇬🇧', math: '🔢', science: '🧬', social: '🌍', history: '🏛️', geography: '🗺️', civics: '⚖️' };
+    const subjectColors = { chinese: '#0B5EAC', english: '#72A0CB', math: '#16A34A', science: '#D97706', civics: '#EC4899', history: '#DC2626', geography: '#8B5CF6' };
 
     el.innerHTML = `
       <div class="grid grid-2" style="margin-bottom:20px">
@@ -2822,15 +2820,15 @@ async function renderDiagnosis() {
       </div>
       <div style="margin-bottom:16px">
         <h3 style="font-size:.9375rem;margin-bottom:12px">📖 各科章節分析</h3>
-        ${subjectOrderAll.map(sid => {
+        ${SUBJECT_ORDER_7.map(sid => {
           const units = unitsBySubject[sid];
           if (!units || units.length === 0) return '';
           const color = subjectColors[sid] || '#0B5EAC';
           const avgAcc = Math.round(units.reduce((s, u) => s + u.accuracy * u.total, 0) / Math.max(1, units.reduce((s, u) => s + u.total, 0)));
           return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${color}">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-              <span style="font-size:1.2rem">${subjectIcons[sid] || '📚'}</span>
-              <span style="font-weight:600;font-size:.9375rem">${subjectLabelsAll[sid] || sid}</span>
+              <span style="font-size:1.2rem">${SUBJECT_ICONS_7[sid] || '📚'}</span>
+              <span style="font-weight:600;font-size:.9375rem">${SUBJECT_LABELS_7[sid] || sid}</span>
               <span class="tag tag-sm ${avgAcc >= 80 ? 'tag-green' : avgAcc >= 50 ? 'tag-yellow' : 'tag-red'}">${avgAcc}%</span>
             </div>
             ${units.map(u => {
@@ -3457,9 +3455,10 @@ async function renderAdmin() {
             <span class="text-sm">${p.nickname || '未知'}</span>
           </div></td>
           <td><span class="tag ${isAdmin ? 'tag-yellow' : 'tag-gray'} tag-sm">${isAdmin ? '管理員' : '用戶'}</span></td>
-          <td>
+          <td style="display:flex;gap:4px">
+            <button class="btn btn-ghost btn-sm" onclick="viewUserDetail('${d.id}')" style="font-size:.75rem">📊 查看</button>
             <button class="btn btn-ghost btn-sm" onclick="toggleUserRole('${d.id}','${p.role||'user'}')" style="color:${isAdmin ? 'var(--danger)' : 'var(--primary)'};font-size:.75rem">
-              ${isAdmin ? '降級為用戶' : '設為管理員'}
+              ${isAdmin ? '降級' : '管理員'}
             </button>
           </td>
         </tr>`);
@@ -3881,6 +3880,198 @@ async function toggleUserRole(uid, currentRole) {
   } finally {
     loading(false);
   }
+}
+
+// ===== Admin View User Detail =====
+const SUBJECT_ORDER_7 = ['chinese','english','math','science','civics','history','geography'];
+const SUBJECT_LABELS_7 = { chinese:'國語', english:'英文', math:'數學', science:'生物', civics:'公民', history:'歷史', geography:'地理' };
+const SUBJECT_COLORS_7 = { chinese:'#0B5EAC', english:'#72A0CB', math:'#16A34A', science:'#D97706', civics:'#EC4899', history:'#DC2626', geography:'#8B5CF6' };
+const SUBJECT_ICONS_7 = { chinese:'🇹🇼', english:'🇬🇧', math:'📐', science:'🌿', civics:'⚖️', history:'📜', geography:'🌍' };
+
+async function viewUserDetail(uid) {
+  if (!uid) return;
+  loading(true);
+  try {
+    const [profileSnap, sessionsSnap, answersSnap] = await Promise.all([
+      db.collection('profiles').doc(uid).get(),
+      db.collection('quiz_sessions').where('userId', '==', uid).get(),
+      db.collection('quiz_answers').where('userId', '==', uid).limit(500).get()
+    ]);
+
+    const profile = profileSnap.exists ? { id: uid, ...profileSnap.data() } : { id: uid, nickname: '未知' };
+    const sessions = [];
+    sessionsSnap.forEach(d => sessions.push({ id: d.id, ...d.data() }));
+    const answers = [];
+    answersSnap.forEach(d => answers.push({ id: d.id, ...d.data() }));
+
+    // Overall stats
+    const totalQuizzes = sessions.length;
+    const totalCorrect = sessions.reduce((s, x) => s + (x.score || 0), 0);
+    const totalQ = sessions.reduce((s, x) => s + (x.totalQuestions || 0), 0);
+    const avgAcc = totalQ > 0 ? Math.round(totalCorrect / totalQ * 100) : 0;
+
+    // Per-subject stats from sessions
+    const subjStats = {};
+    SUBJECT_ORDER_7.forEach(id => { subjStats[id] = { correct: 0, total: 0 }; });
+    sessions.forEach(s => {
+      const topic = s.topic || '';
+      for (const id of SUBJECT_ORDER_7) {
+        const label = SUBJECT_LABELS_7[id];
+        if (topic.includes(label) || topic.includes(id)) {
+          subjStats[id].total += s.totalQuestions || 0;
+          subjStats[id].correct += s.score || 0;
+        }
+      }
+    });
+
+    // Per-subject from answers (more precise)
+    answers.forEach(a => {
+      const tags = a.knowledgeTags || [];
+      for (const id of SUBJECT_ORDER_7) {
+        const label = SUBJECT_LABELS_7[id];
+        if (tags.some(t => t.includes(label) || t.includes(id))) {
+          subjStats[id].total++;
+          if (a.isCorrect) subjStats[id].correct++;
+        }
+      }
+    });
+
+    // Weak tags
+    const tagMap = {};
+    answers.forEach(a => {
+      (a.knowledgeTags || []).forEach(t => {
+        if (!tagMap[t]) tagMap[t] = { correct: 0, total: 0 };
+        tagMap[t].total++;
+        if (a.isCorrect) tagMap[t].correct++;
+      });
+    });
+    const weakTags = Object.entries(tagMap)
+      .map(([tag, v]) => ({ tag: tag.replace('#',''), acc: v.total > 0 ? Math.round(v.correct/v.total*100) : 0, total: v.total }))
+      .filter(v => v.acc < 70)
+      .sort((a, b) => a.acc - b.acc)
+      .slice(0, 10);
+
+    // Recent sessions
+    const recent = sessions.sort((a, b) => ((b.completedAt||'')+'').localeCompare((a.completedAt||'')+'')).slice(0, 10);
+
+    // Close existing modal
+    const old = $('userDetailModal');
+    if (old) old.remove();
+    // Remove old chart canvas to avoid double init
+    const oldCanvas = document.querySelector('#userDetailRadar');
+    if (oldCanvas) oldCanvas.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'userDetailModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:300;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+    overlay.onclick = e => { if (e.target === overlay) closeUserDetail(); };
+
+    const radarData = SUBJECT_ORDER_7.map(id => {
+      const st = subjStats[id] || { correct: 0, total: 0 };
+      const acc = st.total > 0 ? Math.round(st.correct / st.total * 100) : 0;
+      return { subject: SUBJECT_LABELS_7[id], accuracy: acc, id };
+    });
+
+    const hasData = radarData.some(d => d.accuracy > 0);
+
+    overlay.innerHTML = `
+      <div class="card" style="max-width:800px;width:100%;margin-top:20px;position:relative;padding:24px">
+        <button onclick="closeUserDetail()" style="position:absolute;top:12px;right:16px;background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--gray-400)">✕</button>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          ${profile.avatarUrl ? `<img src="${profile.avatarUrl}" style="width:48px;height:48px;border-radius:50%;object-fit:cover">` : `<div style="width:48px;height:48px;border-radius:50%;background:var(--gray-200);display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:var(--gray-400)">${(profile.nickname||'?')[0]}</div>`}
+          <div>
+            <div style="font-weight:600;font-size:1.05rem">${profile.nickname || '未知'}</div>
+            <div class="text-xs text-muted">${profile.email || ''} · 加入 ${formatDate(profile.createdAt)}</div>
+          </div>
+        </div>
+        <div class="grid grid-3" style="margin-bottom:16px">
+          <div class="stat-card"><div class="stat-value">${totalQuizzes}</div><div class="stat-label">練習次數</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:${avgAcc >= 70 ? 'var(--success)' : 'var(--danger)'}">${avgAcc}%</div><div class="stat-label">平均正確率</div></div>
+          <div class="stat-card"><div class="stat-value">${totalQ}</div><div class="stat-label">答題總數</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="card" style="padding:16px">
+            <h4 style="font-size:.8125rem;margin-bottom:8px">🎯 各科雷達</h4>
+            <div class="chart-container" style="height:220px"><canvas id="userDetailRadar"></canvas></div>
+          </div>
+          <div>
+            <h4 style="font-size:.8125rem;margin-bottom:8px">📊 各科正確率</h4>
+            ${SUBJECT_ORDER_7.map(id => {
+              const st = subjStats[id] || { correct: 0, total: 0 };
+              const acc = st.total > 0 ? Math.round(st.correct / st.total * 100) : 0;
+              const pct = st.total > 0 ? acc : 0;
+              const color = pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
+              return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
+                <span style="width:28px;text-align:center">${SUBJECT_ICONS_7[id] || '📚'}</span>
+                <span style="width:36px;font-size:.75rem;font-weight:500">${SUBJECT_LABELS_7[id]}</span>
+                <div style="flex:1;height:8px;background:var(--gray-100);border-radius:8px;overflow:hidden">
+                  <div style="height:100%;width:${pct}%;background:${color};border-radius:8px;transition:width .5s"></div>
+                </div>
+                <span style="width:48px;text-align:right;font-size:.75rem;font-weight:700;color:${color}">${pct}%</span>
+                <span style="width:36px;text-align:right;font-size:.625rem;color:var(--gray-400)">${st.total}題</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        ${weakTags.length > 0 ? `
+        <div class="card" style="padding:16px;margin-bottom:16px">
+          <h4 style="font-size:.8125rem;margin-bottom:8px">⚠️ 弱點知識點（正確率 < 70%）</h4>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${weakTags.map(w => `<span class="tag tag-sm" style="background:var(--danger-light);color:var(--danger)">${w.tag} (${w.acc}%, ${w.total}題)</span>`).join('')}
+          </div>
+        </div>` : ''}
+        <div class="card" style="padding:16px">
+          <h4 style="font-size:.8125rem;margin-bottom:8px">最近練習（${recent.length} 筆）</h4>
+          ${recent.length > 0 ? recent.map(s => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--gray-50)">
+              <div><span class="text-sm">${s.topic || '未命名'}</span><span class="text-xs text-muted ml-2">${formatDate(s.completedAt)}</span></div>
+              <div><span class="text-sm" style="font-weight:600;color:${(s.score||0)/(s.totalQuestions||1)>=0.7?'var(--success)':'var(--warning)'}">${s.score||0}/${s.totalQuestions||0}</span></div>
+            </div>
+          `).join('') : '<div class="text-sm text-muted">尚無練習紀錄</div>'}
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    if (hasData) {
+      setTimeout(() => {
+        const ctx = document.getElementById('userDetailRadar')?.getContext('2d');
+        if (ctx) {
+          new Chart(ctx, {
+            type: 'radar',
+            data: {
+              labels: radarData.map(d => d.subject),
+              datasets: [{
+                label: '正確率',
+                data: radarData.map(d => d.accuracy),
+                backgroundColor: 'rgba(11,94,172,.06)',
+                borderColor: '#0B5EAC',
+                borderWidth: 2, pointRadius: 0, pointHitRadius: 10
+              }]
+            },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              scales: { r: { min: 0, max: 100, ticks: { stepSize: 20, callback: v => v+'%' }, grid: { color: 'rgba(0,0,0,.06)' } } },
+              plugins: { legend: { display: false } }
+            }
+          });
+        }
+      }, 100);
+    }
+  } catch(e) {
+    console.error(e);
+    toast('載入用戶資料失敗：' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+function closeUserDetail() {
+  const el = document.getElementById('userDetailModal');
+  if (el) el.remove();
+  // Clean up chart canvas if any
+  const canvas = document.getElementById('userDetailRadar');
+  if (canvas) canvas.remove();
 }
 
 /* ============================================================
