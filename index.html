@@ -1220,25 +1220,47 @@ async function callAIProxy(prompt) {
   }
 }
 
-// ===== NVIDIA API Proxy (via /api/nvidia, fallback /api/nvidia-fast) =====
+// ===== NVIDIA API Direct Call =====
+const NVIDIA_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
+const NVIDIA_MODELS = ['nvidia/llama-3.3-nemotron-super-49b-v1', 'google/gemma-3n-e4b-it', 'minimaxai/minimax-m2.7'];
+
 async function callNVIDIA(prompt, fast) {
-  const url = fast ? '/api/nvidia-fast' : '/api/nvidia';
   const timeout = fast ? 35000 : 60000;
   const apiKey = state.adminData?.nvidiaApiKey || '';
+  if (!apiKey) throw new Error('NVIDIA_API_KEY 未設定');
+  const models = fast ? ['google/gemma-3n-e4b-it'] : NVIDIA_MODELS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const r = await fetch(url, {
-      method: 'POST', signal: controller.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, apiKey })
-    });
-    if (r.status === 429) throw { code: 'RATE_LIMITED', retryType: fast ? 'fast' : 'main' };
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      throw new Error(err.error || url + ' error: ' + r.status);
+    for (const model of models) {
+      const r = await fetch(NVIDIA_URL, {
+        method: 'POST', signal: controller.signal,
+        headers: {
+          'Authorization': 'Bearer ' + apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: fast ? 0.2 : 0.9,
+          top_p: fast ? 0.7 : undefined,
+          max_tokens: 8192
+        })
+      });
+      if (r.status === 429) {
+        if (models.length > 1) continue;
+        throw { code: 'RATE_LIMITED', retryType: fast ? 'fast' : 'main' };
+      }
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error?.message || NVIDIA_URL + ' error: ' + r.status);
+      }
+      const data = await r.json();
+      let text = data.choices?.[0]?.message?.content || '';
+      text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      return JSON.parse(text);
     }
-    return await r.json();
+    throw { code: 'RATE_LIMITED', retryType: fast ? 'fast' : 'main' };
   } catch (e) {
     if (e.code === 'RATE_LIMITED') throw e;
     if (e.name === 'AbortError') throw new Error('NVIDIA 連線超時');
@@ -3759,40 +3781,44 @@ async function saveNvidiaKey() {
 
 async function testNvidiaAPI() {
   const el = $('nvidiaTestResult');
-  if (el) el.innerHTML = '🔄 測試 /api/nvidia...';
+  if (el) el.innerHTML = '🔄 測試 NVIDIA API...';
   const ak = state.adminData?.nvidiaApiKey || '';
-  const test = async (url) => {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 20000);
-    try {
-      const r = await fetch(url, {
-        method: 'POST', signal: c.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: 'Say "ok" as JSON: {"status":"ok"}', apiKey: ak })
-      });
-      return r;
-    } finally { clearTimeout(t); }
-  };
-  // Test main
-  let r = await test('/api/nvidia');
-  if (r.ok) {
-    if (el) el.innerHTML = '✅ /api/nvidia 正常';
-    // Test fast
-    r = await test('/api/nvidia-fast');
+  if (!ak) {
+    if (el) el.innerHTML = '❌ 未設定 NVIDIA API Key';
+    toast('請先在管理後台設定 NVIDIA API Key', 'error');
+    return;
+  }
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), 20000);
+  try {
+    const r = await fetch(NVIDIA_URL, {
+      method: 'POST', signal: c.signal,
+      headers: {
+        'Authorization': 'Bearer ' + ak,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: NVIDIA_MODELS[0],
+        messages: [{ role: 'user', content: 'Say "ok" as JSON: {"status":"ok"}' }],
+        temperature: 0, max_tokens: 50
+      })
+    });
     if (r.ok) {
-      if (el) el.innerHTML = '✅ /api/nvidia + /api/nvidia-fast 均正常';
+      if (el) el.innerHTML = '✅ NVIDIA API 正常';
       toast('NVIDIA API 測試通過', 'success');
+    } else if (r.status === 429) {
+      if (el) el.innerHTML = '⏳ NVIDIA API 限流 (429)，請稍後重試';
+      toast('NVIDIA 限流', 'info');
     } else {
-      if (el) el.innerHTML = '✅ /api/nvidia 正常，❌ /api/nvidia-fast ' + r.status;
-      toast('NVIDIA fast 異常', 'warning');
+      const err = await r.json().catch(() => ({}));
+      if (el) el.innerHTML = '❌ NVIDIA API: ' + (err.error?.message || r.status);
+      toast('NVIDIA API 測試失敗', 'error');
     }
-  } else if (r.status === 429) {
-    if (el) el.innerHTML = '⏳ NVIDIA API 限流 (429)，請稍後重試';
-    toast('NVIDIA 限流', 'info');
-  } else {
-    const err = await r.json().catch(() => ({}));
-    if (el) el.innerHTML = '❌ /api/nvidia: ' + (err.error || r.status);
-    toast('NVIDIA API 測試失敗', 'error');
+  } catch (e) {
+    if (el) el.innerHTML = '❌ 連線錯誤: ' + (e.message || '');
+    toast('NVIDIA API 連線失敗', 'error');
+  } finally {
+    clearTimeout(t);
   }
 }
 
